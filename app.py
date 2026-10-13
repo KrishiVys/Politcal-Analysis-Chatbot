@@ -405,18 +405,16 @@ def _card():
         return st.container()
 
 
-def _md_cell(text) -> str:
-    return " ".join(str(text or "").split()).replace("|", "\\|")
-
-
 def render_wrap(wrap: dict, key_prefix: str) -> None:
     n = wrap["narrative"]
     st.markdown(f"### 🗞️ {uc.wrap_title(wrap)}")
+    notes = []
     if wrap["used_template"]:
-        st.caption("Keyword-based wrap-up: Sarvam AI wasn't available, so stories are listed rather than summarised.")
-    if n.get("headline_of_the_day"):
-        st.markdown(f'<div class="topline-box"><b>📰 {html.escape(uc.wrap_headline_label(wrap))}</b><br>'
-                    f'{html.escape(n["headline_of_the_day"])}</div>', unsafe_allow_html=True)
+        notes.append("Sarvam AI wasn't available, so each point is the story's own headline.")
+    if any(pt["top"] for nn in n["states"].values() for pts in nn["points"].values() for pt in pts):
+        notes.append(uc.WRAP_TOP_LEGEND)
+    notes.append("Each point appears once; the outlet names beside it link to the articles.")
+    st.caption(" ".join(notes))
     tabs = st.tabs([s_["label"] for s_ in wrap["states"]] + ["🔎 Sources Checked"])
     for tab, state in zip(tabs, wrap["states"]):
         with tab:
@@ -426,60 +424,32 @@ def render_wrap(wrap: dict, key_prefix: str) -> None:
                 who = f"{state['party']} " if state.get("party") else ""
                 st.info(f"No {who}news found for {state['label']} in this period.")
                 continue
-            if sn["overview"]:
-                st.markdown(f"**Overview.** {sn['overview']}")
-            if sn["key_highlights"]:
-                st.markdown("#### ✨ Key highlights")
-                st.markdown("\n".join(f"- {h}" for h in sn["key_highlights"]))
-            if state.get("party"):
-                count = len(state["by_section"].get("politics", []))
+            starred, other = uc.wrap_sections_for_display(state, sn)
+            for key, label, icon, pts in starred:
                 with _card():
-                    st.markdown(f"#### {uc.WRAP_PARTY_POLITICS_ICON} {uc.WRAP_PARTY_POLITICS_LABEL}"
-                                + (f"  ·  {count} stor{'y' if count == 1 else 'ies'}" if count else ""))
-                    if sn["party_politics"]:
-                        st.markdown(sn["party_politics"])
-                    else:
+                    st.markdown(f"#### {icon} {label}" + (f"  ·  {len(pts)} point{'s' if len(pts) != 1 else ''}"
+                                                          if pts else ""))
+                    if not pts:
                         st.caption(uc.WRAP_EMPTY_HIGHLIGHT)
-            for key, label, icon in uc.WRAP_HIGHLIGHTS:
-                count = len(state["by_section"].get(key, []))
-                with _card():
-                    st.markdown(f"#### {icon} {label}" + (f"  ·  {count} stor{'y' if count == 1 else 'ies'}" if count else ""))
-                    if key in ("government", "policy"):
-                        if sn[key]:
-                            st.markdown(sn[key])
-                        else:
-                            st.caption(uc.WRAP_EMPTY_HIGHLIGHT)
-                    elif key == "ministries":
-                        if sn["ministries"]:
-                            st.markdown("| Department | Update |\n|---|---|\n" + "\n".join(
-                                f"| **{_md_cell(m['department'])}** | {_md_cell(m['update'])} |" for m in sn["ministries"]))
-                        else:
-                            st.caption(uc.WRAP_EMPTY_HIGHLIGHT)
-                    else:
-                        if sn["courts"]:
-                            st.markdown("| Court | Ruling / order |\n|---|---|\n" + "\n".join(
-                                f"| **{_md_cell(c['court'])}** | {_md_cell(c['ruling'])} |" for c in sn["courts"]))
-                        else:
-                            st.caption(uc.WRAP_EMPTY_HIGHLIGHT)
-            if sn["other"]:
+                    lines = []
+                    for group, gpts in uc.wrap_point_groups(pts, key):
+                        if group:
+                            lines.append(f"- **{group}**")
+                        lines += [("    - " if group else "- ") + uc.point_markdown(pt) for pt in gpts]
+                    if lines:
+                        st.markdown("\n".join(lines))
+            if other:
                 with st.expander("📰 Other news", expanded=True):
-                    for label, text in sn["other"].items():
-                        st.markdown(f"**{label}:** {text}")
-            with st.expander(f"🔗 Sources ({len(state['stories'])} stories, by section)"):
-                for key in uc.wrap_section_order(state):
-                    stories = state["by_section"].get(key, [])
-                    if not stories:
-                        continue
-                    star = "★ " if uc.wrap_is_starred(state, key) else ""
-                    st.markdown(f"**{star}{uc.wrap_section_label(state, key)}**")
-                    for story in stories:
-                        tag = story.get("court") or (story.get("department") if key in uc.WRAP_HIGHLIGHT_KEYS else None)
-                        head = f"[{story['headline']}]({story['url']})" if story.get("url") else story["headline"]
-                        st.markdown(f"- {head}" + (f" `{tag}`" if tag else "") + f"  \n  *{uc.story_meta(story)}*")
+                    lines = []
+                    for key, label, pts in other:
+                        lines.append(f"- **{label}**")
+                        lines += ["    - " + uc.point_markdown(pt) for pt in pts]
+                    st.markdown("\n".join(lines))
     with tabs[-1]:
         render_sources_tab(wrap["status"])
     if n.get("what_to_watch"):
-        st.markdown(f'<div class="watch-box"><b>👀 What to Watch</b><br>{html.escape(n["what_to_watch"])}</div>',
+        st.markdown('<div class="watch-box"><b>👀 What to Watch</b><ul>'
+                    + "".join(f"<li>{html.escape(w)}</li>" for w in n["what_to_watch"]) + "</ul></div>",
                     unsafe_allow_html=True)
     render_wrap_downloads(wrap, key_prefix)
 
