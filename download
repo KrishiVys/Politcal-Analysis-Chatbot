@@ -1,0 +1,8 @@
+# Never upload real API keys
+.env
+.streamlit/secrets.toml
+
+# Generated files
+reports/
+__pycache__/
+*.pyc
