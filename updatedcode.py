@@ -98,6 +98,7 @@ USAGE
     python updatedcode.py --wrap telangana --save
     python updatedcode.py --wrap ap --date 2026-10-09 --pdf
     python updatedcode.py --wrap --from-date 2026-10-01 --to-date 2026-10-07 --save   # a date range (max 31 days)
+    python updatedcode.py --wrap telangana --wrap-party BRS               # one party's news in AP/Telangana
     (In interactive mode, typing "daily wrap", "today's news telangana",
      "AP roundup", "weekly wrap" or "telangana wrap last 5 days" does the same.)
 
@@ -352,6 +353,7 @@ POLITICAL_PARTIES = {
     "Bharat Rashtra Samithi": (["BRS", "TRS", "Telangana Rashtra Samithi"], ["BRS", "Bharat Rashtra Samithi"]),
     "Telugu Desam Party": (["TDP", "Telugu Desam"], ["TDP", "Telugu Desam"]),
     "YSR Congress Party": (["YSRCP", "YSRC", "YSR Congress"], ["YSRCP", "YSR Congress"]),
+    "Jana Sena Party": (["Jana Sena", "Janasena", "JSP"], ["Jana Sena", "Janasena"]),
     "Aam Aadmi Party": (["AAP"], ["Aam Aadmi Party", "AAP"]),
     "All India Trinamool Congress": (["TMC", "AITC", "Trinamool", "Trinamool Congress"], ["Trinamool", "TMC"]),
     "Dravida Munnetra Kazhagam": (["DMK"], ["DMK", "Dravida Munnetra Kazhagam"]),
@@ -2619,7 +2621,7 @@ def resolve_wrap_states(choice: str = "") -> list:
     raise ValueError(f"Unknown state '{choice}'. Use: both, ap (Andhra Pradesh), or telangana.")
 
 
-_WRAP_TRIGGERS = re.compile(r"\b(wrap[\s-]?up|wrapup|daily wrap|weekly wrap|news wrap|round[\s-]?up|digest|"
+_WRAP_TRIGGERS = re.compile(r"\b(wrap[\s-]?up|wrapup|wrap|daily wrap|weekly wrap|news wrap|round[\s-]?up|digest|"
                             r"daily news|weekly news|today'?s news|news today|news of the day|news this week|"
                             r"this week'?s news|daily briefing)\b", re.I)
 
@@ -2802,6 +2804,116 @@ def _short_error(e) -> str:
     return str(e).split(" for url")[0].strip()[:120]
 
 
+# ---- Party wrap-ups -------------------------------------------------------
+# The same structured wrap-up, about ONE party in Andhra Pradesh and/or
+# Telangana: only news naming the party or its leaders is kept -- plus, for the
+# party that LEADS a state's government, that government's decisions, since
+# those are the party in power acting. An extra highlighted section, "Party
+# Politics & Campaigns", comes first.
+
+# The party leading each state's government. UPDATE after elections.
+WRAP_STATE_GOVERNMENT = {"andhra pradesh": "Telugu Desam Party", "telangana": "Indian National Congress"}
+
+# How each AP/Telangana party is recognised in a headline: its names, and its
+# prominent leaders. UPDATE the leaders when leadership changes.
+WRAP_PARTY_PROFILES = {
+    "Bharat Rashtra Samithi": {"short": "BRS", "match": [r"brs\b", r"bharat rashtra samithi", r"trs\b"],
+                               "leaders": ["KCR", "Chandrashekar Rao", "Chandrasekhar Rao", "KTR", "Rama Rao",
+                                           "Harish Rao"]},
+    "Indian National Congress": {"short": "Congress", "match": [r"(?<!ysr )congress", r"indian national congress"],
+                                 "leaders": ["Revanth", "Bhatti", "Uttam Kumar", "Mahesh Kumar Goud", "Sharmila"]},
+    "Bharatiya Janata Party": {"short": "BJP", "match": [r"bjp\b", r"bharatiya janata"],
+                               "leaders": ["Kishan Reddy", "Bandi Sanjay", "Ramchander Rao", "Purandeswari",
+                                           "Etela Rajender"]},
+    "Telugu Desam Party": {"short": "TDP", "match": [r"tdp\b", r"telugu desam"],
+                           "leaders": ["Chandrababu", "Naidu", "Lokesh", "Atchannaidu"]},
+    "YSR Congress Party": {"short": "YSRCP", "match": [r"ysrcp", r"ysrc\b", r"ysr congress"],
+                           "leaders": ["Jagan", "Botcha", "Sajjala", "Peddireddy"]},
+    "Jana Sena Party": {"short": "Jana Sena", "match": [r"jana ?sena", r"jsp\b"],
+                        "leaders": ["Pawan Kalyan", "Nadendla"]},
+    "All India Majlis-e-Ittehadul Muslimeen": {"short": "AIMIM", "match": [r"aimim", r"mim\b", r"majlis"],
+                                               "leaders": ["Owaisi"]},
+    "Communist Party of India": {"short": "CPI", "match": [r"cpi\b(?!\s*\(?m)", r"communist party of india(?! \(m)"],
+                                 "leaders": []},
+    "Communist Party of India (Marxist)": {"short": "CPI(M)", "match": [r"cpi\s*\(?m\b\)?", r"cpim", r"cpm\b",
+                                                                       r"communist party of india \(marxist\)"],
+                                           "leaders": []},
+}
+WRAP_STATE_PARTY_QUERY = {"andhra pradesh": '("Andhra Pradesh" OR "Amaravati" OR "Vijayawada" OR "Visakhapatnam")',
+                          "telangana": '("Telangana" OR "Hyderabad")'}
+WRAP_PARTY_POLITICS_LABEL, WRAP_PARTY_POLITICS_ICON = "Party Politics & Campaigns", "\U0001F4E3"
+WRAP_PARTY_POLITICS_CAP = 12
+
+
+def resolve_wrap_party(name):
+    """None for no party, else {name, short, search_terms, leaders, leads, match}.
+    Raises ValueError for a party the tool doesn't know."""
+    if not name or not str(name).strip():
+        return None
+    canon = _PARTY_LOOKUP.get(str(name).strip().lower())
+    if not canon:
+        raise ValueError(f"Unknown party '{name}'. Try: BRS, Congress, BJP, TDP, YSRCP, Jana Sena, AIMIM, CPI, CPI(M).")
+    aliases, terms = POLITICAL_PARTIES[canon]
+    prof = WRAP_PARTY_PROFILES.get(canon, {})
+    frags = prof.get("match") or [re.escape(x.lower()) + r"\b" for x in [canon] + aliases + terms if len(x) >= 3]
+    leaders = prof.get("leaders", [])
+    return {"name": canon, "short": prof.get("short") or (aliases[0] if aliases else canon), "search_terms": terms,
+            "leaders": leaders, "leads": [k for k, v in WRAP_STATE_GOVERNMENT.items() if v == canon],
+            "match": _rx(frags + [re.escape(l.lower()) + r"\b" for l in leaders])}
+
+
+def detect_wrap_party(text: str):
+    """The AP/Telangana party a wrap-up request names (e.g. 'BRS wrap', 'TDP
+    weekly wrap-up'), as its full name -- or None. Leaders' names don't count:
+    'Revanth news wrap' is not a request for a Congress wrap-up."""
+    t = (text or "").lower()
+    best, best_len = None, 0
+    for canon, prof in WRAP_PARTY_PROFILES.items():
+        m = _rx(prof["match"]).search(t)
+        if m and len(m.group(0)) > best_len:
+            best, best_len = canon, len(m.group(0))
+    return best
+
+
+def wrap_section_order(state: dict) -> list:
+    """Sections in display order; a party wrap-up puts party politics first."""
+    if state.get("party"):
+        return ["politics"] + [k for k in WRAP_SECTION_ORDER if k != "politics"]
+    return WRAP_SECTION_ORDER
+
+
+def wrap_is_starred(state: dict, key: str) -> bool:
+    return key in WRAP_HIGHLIGHT_KEYS or (bool(state.get("party")) and key == "politics")
+
+
+def wrap_section_label(state: dict, key: str) -> str:
+    return WRAP_PARTY_POLITICS_LABEL if (state.get("party") and key == "politics") else WRAP_SECTION_LABELS[key]
+
+
+def _party_searches(party: dict, state_key: str) -> tuple:
+    """(general, focused) searches for a party in one state. General searches
+    go to GDELT and Google News (split into date chunks for a range); focused
+    ones to Google News over the whole period."""
+    sq = WRAP_STATE_PARTY_QUERY[state_key]
+    pq = build_news_query(party["search_terms"])
+    general = [(f"{pq} {sq} sourcecountry:IN", f"{pq} {sq}")]
+    focus = [f'{pq} ("High Court" OR "Supreme Court" OR court) {sq}']
+    if party["leaders"]:
+        focus.append(f"{build_news_query(party['leaders'])} {sq}")
+    if state_key in party["leads"]:
+        focus += WRAP_STATES[state_key]["focus_queries"]
+    return general, focus
+
+
+def is_party_news(headline: str, party: dict, state_key: str) -> bool:
+    """Names the party or one of its leaders -- or, for the party leading this
+    state's government, is about that government's decisions."""
+    h = headline or ""
+    if party["match"].search(h):
+        return True
+    return state_key in party["leads"] and classify_story(h)["section"] in ("government", "policy", "ministries")
+
+
 # Reuse between wrap-ups in the same session (the app, or interactive CLI mode):
 # the SAME state and dates reuse the SAME fetched news, and identical stories
 # reuse the SAME written summary -- so Telangana reads identically whether it's
@@ -2827,31 +2939,37 @@ def clear_wrap_cache() -> None:
     _WRAP_NARRATIVE_CACHE.clear()
 
 
-def gather_state_news(state_key: str, start_day, end_day=None, pause: float = 1.0) -> tuple:
+def gather_state_news(state_key: str, start_day, end_day=None, pause: float = 1.0, party=None) -> tuple:
     """(articles, status_text) for one state over one or more IST calendar
     days: general searches (GDELT + Google News, Google split into date chunks
-    for a range) plus focused Google News searches for courts, cabinet and
-    government orders, policy, and ministries -- de-duplicated, with articles
-    that are clearly about another state or country removed."""
+    for a range) plus focused Google News searches -- de-duplicated, with
+    articles clearly about another state or country removed. With a party
+    (see resolve_wrap_party), the searches are about that party in this state,
+    and only news about the party (or, for the governing party, its
+    government) is kept."""
     end_day = end_day or start_day
     info = WRAP_STATES[state_key]
     start, end = ist_range_window(start_day, end_day)
     days = (end_day - start_day).days + 1
+    if party:
+        general, focus = _party_searches(party, state_key)
+    else:
+        general = [(build_news_query(t, india_only=True), build_news_query(t)) for t in info["query_sets"]]
+        focus = info.get("focus_queries", [])
     articles, fails = [], []
     counts = {"GDELT": 0, "Google News": 0, "focused searches": 0}
-    for i, terms in enumerate(info["query_sets"]):
+    for i, (gq, nq) in enumerate(general):
         if i:
             time.sleep(pause)
         try:
-            got = _gdelt_throttled(build_news_query(terms, india_only=True), min(250, 75 * days), start, end)
+            got = _gdelt_throttled(gq, min(250, 75 * days), start, end)
             articles += got
             counts["GDELT"] += len(got)
         except Exception as e:
             fails.append(f"GDELT ({_short_error(e)})")
         for cs, ce in _date_chunks(start_day, end_day):
             try:
-                q = (f"{build_news_query(terms)} after:{(cs - timedelta(days=1)):%Y-%m-%d} "
-                     f"before:{(ce + timedelta(days=1)):%Y-%m-%d}")
+                q = f"{nq} after:{(cs - timedelta(days=1)):%Y-%m-%d} before:{(ce + timedelta(days=1)):%Y-%m-%d}"
                 got = get_google_news_fallback(q, 100, *ist_range_window(cs, ce))
                 articles += got
                 counts["Google News"] += len(got)
@@ -2859,7 +2977,7 @@ def gather_state_news(state_key: str, start_day, end_day=None, pause: float = 1.
                 fails.append(f"Google News ({_short_error(e)})")
             if days > 1:
                 time.sleep(0.5)
-    for q in info.get("focus_queries", []):
+    for q in focus:
         try:
             full = (f"{q} after:{(start_day - timedelta(days=1)):%Y-%m-%d} "
                     f"before:{(end_day + timedelta(days=1)):%Y-%m-%d}")
@@ -2871,28 +2989,42 @@ def gather_state_news(state_key: str, start_day, end_day=None, pause: float = 1.
         time.sleep(0.5)
     articles = _dedupe_articles(_filter_by_date(articles, start, end))
     kept = [a for a in articles if not is_off_state(a.get("headline", ""), state_key)]
+    off = len(articles) - len(kept)
+    not_party = 0
+    if party:
+        before = len(kept)
+        kept = [a for a in kept if is_party_news(a.get("headline", ""), party, state_key)]
+        not_party = before - len(kept)
     note = (f"{len(kept)} articles (GDELT {counts['GDELT']}, Google News {counts['Google News']}, "
             f"focused searches {counts['focused searches']}")
-    if len(kept) < len(articles):
-        note += f"; {len(articles) - len(kept)} about other states/countries removed"
+    if off:
+        note += f"; {off} about other states/countries removed"
+    if not_party:
+        note += f"; {not_party} not about {party['short']} removed"
     if fails:
         note += "; failed: " + "; ".join(sorted(set(fails)))[:300]
     return kept, note + ")"
 
 
-def select_wrap_stories(candidates: list, multi: bool = False) -> dict:
+def select_wrap_stories(candidates: list, multi: bool = False, party_mode: bool = False) -> dict:
     """{section_key: [stories]} in display order. Each highlighted section gets
     its own quota (so its stories aren't pushed out by bigger ones); all other
-    news shares one quota, most widely carried first."""
+    news shares one quota, most widely carried first. In a party wrap-up, party
+    politics gets its own quota too and comes first."""
     scale = 1.5 if multi else 1.0
     by = {}
     for s in candidates:
         by.setdefault(s["section"], []).append(s)
     chosen = {k: by.get(k, [])[:int(WRAP_SECTION_CAPS[k] * scale)] for k in WRAP_HIGHLIGHT_KEYS}
-    others = [s for s in candidates if s["section"] not in WRAP_HIGHLIGHT_KEYS][:int(WRAP_OTHER_CAP * scale)]
+    own = set(WRAP_HIGHLIGHT_KEYS)
+    if party_mode:
+        chosen["politics"] = by.get("politics", [])[:int(WRAP_PARTY_POLITICS_CAP * scale)]
+        own.add("politics")
+    others = [s for s in candidates if s["section"] not in own][:int(WRAP_OTHER_CAP * scale)]
     for s in others:
         chosen.setdefault(s["section"], []).append(s)
-    return {k: chosen[k] for k in WRAP_SECTION_ORDER if chosen.get(k)}
+    order = wrap_section_order({"party": party_mode})
+    return {k: chosen[k] for k in order if chosen.get(k)}
 
 
 def _story_tags(s: dict, multi: bool) -> str:
@@ -2906,16 +3038,32 @@ def _story_tags(s: dict, multi: bool) -> str:
     return (" {" + "; ".join(tags) + "}") if tags else ""
 
 
-def _wrap_system_prompt(multi_day: bool = False) -> str:
+def _wrap_system_prompt(multi_day: bool = False, party=None, state_key: str = "") -> str:
     period = "a period of several days" if multi_day else "one day"
-    others = ", ".join(l for _, l in WRAP_OTHER_SECTIONS)
-    return (
+    others = ", ".join(l for k, l in WRAP_OTHER_SECTIONS if not (party and k == "politics"))
+    party_intro, party_rules, party_json = "", "", ""
+    if party:
+        leads = state_key in party["leads"]
+        party_intro = (
+            f"THIS WRAP-UP IS ABOUT ONE PARTY: the {party['name']} ({party['short']}). The stories have been filtered "
+            f"to ones involving {party['short']} or its leaders"
+            + (f", plus the decisions of the state government, which {party['short']} leads" if leads else "")
+            + f". Write from that angle: what {party['short']}, its leaders and its representatives did, said, "
+            "faced or decided. Stay strictly neutral: do not praise or criticise the party.\n")
+        party_rules = (
+            "  party_politics (the FIRST highlighted section) -- a paragraph on the party's own political activity: "
+            "campaigns, statements, leadership and organisation, alliances, rivalries, defections and elections. "
+            f"Report claims made by or against {party['short']} as claims (e.g. \"{party['short']} alleged...\", "
+            f"\"rivals accused {party['short']} of...\"), never as established facts.\n")
+        party_json = '"party_politics": "...", '
+    return (party_intro + 
         f"You are a senior news editor writing a structured wrap-up of the news in ONE Indian state, covering "
         f"{period}, for readers who track government and policy. You are given the stories, already grouped so "
         "each line is ONE story with an id like [S3], how many separate outlets carried it, and the section it "
         "belongs to. Tags in braces give the court or government department a story concerns.\n"
-        "THE FOUR HIGHLIGHTED SECTIONS ARE THE PRIORITY OF THIS WRAP-UP (marked with a star):\n"
-        "  government -- a paragraph on the decisions and actions of the Chief Minister, Governor, cabinet and "
+        + ("THE FIVE HIGHLIGHTED SECTIONS ARE THE PRIORITY OF THIS WRAP-UP (marked with a star):\n" + party_rules
+           if party else "THE FOUR HIGHLIGHTED SECTIONS ARE THE PRIORITY OF THIS WRAP-UP (marked with a star):\n")
+        + "  government -- a paragraph on the decisions and actions of the Chief Minister, Governor, cabinet and "
         "senior officials: cabinet decisions, government orders (GOs), appointments, transfers, reviews, sanctions.\n"
         "  policy -- a paragraph on new or changed policies, schemes, bills, ordinances, assembly business and "
         "budget allocations: what it is, who it affects, and when it takes effect if the story says so.\n"
@@ -2927,7 +3075,9 @@ def _wrap_system_prompt(multi_day: bool = False) -> str:
         "final verdict only if the story makes that clear. Never add legal analysis, consequences or predictions.\n"
         "Whenever a highlighted section has stories, cover EVERY one of them (merge duplicates) -- including "
         "single-outlet stories, because rulings and department news are often reported by only one or two outlets. "
-        "Leave government or policy as \"\" ONLY if that section has no stories.\n"
+        + ("Leave party_politics, government or policy as \"\" ONLY if that section has no stories.\n" if party
+           else "Leave government or policy as \"\" ONLY if that section has no stories.\n")
+        + 
         "Rules:\n"
         "- Use ONLY the stories provided. Never add facts, names, numbers or context that aren't in them, and never "
         "move a story into a different section.\n"
@@ -2949,14 +3099,14 @@ def _wrap_system_prompt(multi_day: bool = False) -> str:
         "- what_to_watch: 1-2 sentences on things the stories say are scheduled or pending (hearings, votes, "
         "deadlines, implementation dates). Empty string if nothing is scheduled.\n"
         "Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
-        '{"headline_of_the_day": "...", "overview": "...", "key_highlights": ["..."], "government": "...", '
+        '{"headline_of_the_day": "...", "overview": "...", "key_highlights": ["..."], ' + party_json + '"government": "...", '
         '"policy": "...", "story_summaries": {"S1": "..."}, "other": {"<Section name>": "..."}, "what_to_watch": "..."}'
     )
 
 
 def _assign_story_ids(state: dict) -> None:
     n = 0
-    for key in WRAP_SECTION_ORDER:
+    for key in wrap_section_order(state):
         for s in state["by_section"].get(key, []):
             n += 1
             s["_sid"] = f"S{n}"
@@ -2973,12 +3123,12 @@ def _wrap_user_prompt(start_day, end_day, states: list) -> str:
     for st in states:
         _assign_story_ids(st)
         L.append(f"=== {st['label'].upper()} ({len(st['stories'])} stories) ===")
-        for key in WRAP_SECTION_ORDER:
+        for key in wrap_section_order(st):
             stories = st["by_section"].get(key, [])
-            star = key in WRAP_HIGHLIGHT_KEYS
+            star = wrap_is_starred(st, key)
             if not stories and not star:
                 continue
-            L.append(f"[{'* ' if star else ''}{WRAP_SECTION_LABELS[key]}]" + ("" if stories else " (none)"))
+            L.append(f"[{'* ' if star else ''}{wrap_section_label(st, key)}]" + ("" if stories else " (none)"))
             for s in stories:
                 outlets = ", ".join(s["outlets"][:5]) or "unknown outlet"
                 L.append(f'- [{s["_sid"]}] ({len(s["outlets"])} outlet{"s" if len(s["outlets"]) != 1 else ""}: '
@@ -3030,17 +3180,18 @@ def _normalize_state_narrative(raw) -> dict:
         "ministries": pairs(raw.get("ministries"), ["department", "ministry"], ["update", "text", "summary"],
                             "Other departments")[:15],
         "courts": pairs(raw.get("courts"), ["court"], ["ruling", "judgment", "order", "text", "summary"], "Court")[:12],
+        "party_politics": _polish_paragraph(raw.get("party_politics"), 5),
         "other": {str(k): v for k, v in ((k, _polish_paragraph(v, 3)) for k, v in other.items()) if v},
     }
 
 
-def generate_state_narrative(client, model, start_day, end_day, state: dict) -> dict:
+def generate_state_narrative(client, model, start_day, end_day, state: dict, party=None) -> dict:
     """Ask Sarvam for ONE state's wrap-up (raw dict); one corrective retry;
     raises on failure so the caller can fall back to the template."""
-    messages = [{"role": "system", "content": _wrap_system_prompt(start_day != end_day)},
+    messages = [{"role": "system", "content": _wrap_system_prompt(start_day != end_day, party, state.get("key", ""))},
                 {"role": "user", "content": _wrap_user_prompt(start_day, end_day, [state])}]
     last_error = "no response"
-    expected = ("overview", "government", "policy", "key_highlights", "story_summaries", "other")
+    expected = ("overview", "government", "policy", "key_highlights", "story_summaries", "other", "party_politics")
     for attempt in range(2):
         response = _call_sarvam(client, model, messages)
         message = response.choices[0].message
@@ -3103,6 +3254,11 @@ def compose_state_narrative(state: dict, raw: dict, multi: bool = False) -> tupl
     if not out["overview"] and state["stories"]:
         out["overview"] = tmpl["overview"]
         backfilled.append("Overview")
+    if state.get("party"):
+        if state["by_section"].get("politics") and not out["party_politics"]:
+            out["party_politics"] = tmpl["party_politics"]
+            backfilled.append(WRAP_PARTY_POLITICS_LABEL)
+        out["other"].pop(WRAP_SECTION_LABELS["politics"], None)
     if not out["key_highlights"]:
         out["key_highlights"] = tmpl["key_highlights"]
     for label, text in tmpl["other"].items():
@@ -3127,11 +3283,12 @@ def _template_state_narrative(state: dict, multi: bool = False) -> dict:
     """Keyword-based narrative for one state, in the same shape as the AI's."""
     bs = state["by_section"]
     sent = lambda s: _story_sentence(s, multi)
-    highlights = [sent(bs[k][0]) for k in WRAP_HIGHLIGHT_KEYS if bs.get(k)]
-    rest = sorted((s for k, ss in bs.items() if k not in WRAP_HIGHLIGHT_KEYS for s in ss),
+    starred = [k for k in wrap_section_order(state) if wrap_is_starred(state, k)]
+    highlights = [sent(bs[k][0]) for k in starred if bs.get(k)]
+    rest = sorted((s for k, ss in bs.items() if k not in starred for s in ss),
                   key=lambda s: -len(s["outlets"]))
     highlights += [sent(s) for s in rest[: max(0, 5 - len(highlights))]]
-    n_hl = sum(len(bs.get(k, [])) for k in WRAP_HIGHLIGHT_KEYS)
+    n_hl = sum(len(bs.get(k, [])) for k in starred)
     top = max(state["stories"], key=lambda s: (len(s["outlets"]), s["count"]), default=None)
     raw = {
         "overview": (f"{len(state['stories'])} stories in this wrap-up, {n_hl} of them in the highlighted government, "
@@ -3141,8 +3298,9 @@ def _template_state_narrative(state: dict, multi: bool = False) -> dict:
         "policy": " ".join(sent(s) for s in bs.get("policy", [])[:5]),
         "ministries": _ministry_rows(state, sent),
         "courts": _court_rows(state, sent),
+        "party_politics": " ".join(sent(s) for s in bs.get("politics", [])[:5]) if state.get("party") else "",
         "other": {WRAP_SECTION_LABELS[k]: " ".join(sent(s) for s in bs[k][:3])
-                  for k, _ in WRAP_OTHER_SECTIONS if bs.get(k)},
+                  for k, _ in WRAP_OTHER_SECTIONS if bs.get(k) and not (state.get("party") and k == "politics")},
     }
     return _normalize_state_narrative(raw)
 
@@ -3157,14 +3315,14 @@ def build_template_wrap(states: list, multi: bool = False) -> dict:
 
 
 def _narrative_key(model, start_day, end_day, state: dict) -> str:
-    sig = [model, str(start_day), str(end_day), state["label"],
+    sig = [model, str(start_day), str(end_day), state["label"], state.get("party") or "",
            [(s.get("_sid"), s["headline"], s["outlets"], s["section"], s.get("department"), s.get("court"),
              story_date_range(s)) for s in state["stories"]]]
     return hashlib.sha1(json.dumps(sig, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()
 
 
 def gather_daily_wrap(states_choice: str = "both", day=None, client=None, model: str = DEFAULT_MODEL,
-                      stories_per_state=None, end_day=None, fresh: bool = False) -> dict:
+                      stories_per_state=None, end_day=None, fresh: bool = False, party=None) -> dict:
     """Gather and write the structured news wrap-up for one day (day) or an
     inclusive date range (day .. end_day).
 
@@ -3178,6 +3336,7 @@ def gather_daily_wrap(states_choice: str = "both", day=None, client=None, model:
     by_section, glance, used_template), the narrative, status, used_template.
     Raises ValueError for an unusable state or date range."""
     keys = resolve_wrap_states(states_choice)
+    pinfo = resolve_wrap_party(party)
     start_day = day or ist_today()
     end_day = end_day or start_day
     days = validate_wrap_range(start_day, end_day)
@@ -3187,14 +3346,14 @@ def gather_daily_wrap(states_choice: str = "both", day=None, client=None, model:
     status, states = {}, []
     for key in keys:
         label = WRAP_STATES[key]["label"]
-        ckey = (key, str(start_day), str(end_day))
+        ckey = (key, str(start_day), str(end_day), pinfo["name"] if pinfo else "")
         hit = _cache_get_entry(_WRAP_ARTICLE_CACHE, ckey) if use_cache else None
         if hit:
             print(f"  - {label}: reusing news fetched at {hit['at']} IST...")
             articles, st_status = hit["articles"], hit["status"] + f" -- reused from the search at {hit['at']} IST"
         else:
-            print(f"  - {label}: news for {wrap_period_text(start_day, end_day)}...")
-            articles, st_status = gather_state_news(key, start_day, end_day)
+            print(f"  - {label}: {pinfo['short'] + ' ' if pinfo else ''}news for {wrap_period_text(start_day, end_day)}...")
+            articles, st_status = gather_state_news(key, start_day, end_day, party=pinfo)
             if WRAP_CACHE_ENABLED:
                 _WRAP_ARTICLE_CACHE[ckey] = {"articles": articles, "status": st_status, "until": time.time() + ttl,
                                              "at": f"{utc_now() + IST_OFFSET:%H:%M}"}
@@ -3205,14 +3364,23 @@ def gather_daily_wrap(states_choice: str = "both", day=None, client=None, model:
                                        window_days=WRAP_STORY_GAP_DAYS_RANGE if multi else 1)
         for s in candidates:
             s.update(classify_cluster(s))
-        by_section = select_wrap_stories(candidates, multi)
-        stories = [s for k in WRAP_SECTION_ORDER for s in by_section.get(k, [])]
-        n_hl = sum(len(by_section.get(k, [])) for k in WRAP_HIGHLIGHT_KEYS)
+        by_section = select_wrap_stories(candidates, multi, party_mode=bool(pinfo))
+        probe = {"party": pinfo["short"] if pinfo else None}
+        order = wrap_section_order(probe)
+        starred = [k for k in order if wrap_is_starred(probe, k)]
+        stories = [s for k in order for s in by_section.get(k, [])]
+        n_hl = sum(len(by_section.get(k, [])) for k in starred)
         status[f"{label} sections"] = (f"{n_hl} highlighted (" + ", ".join(
-            f"{WRAP_SECTION_LABELS[k]} {len(by_section.get(k, []))}" for k in WRAP_HIGHLIGHT_KEYS)
+            f"{wrap_section_label(probe, k)} {len(by_section.get(k, []))}" for k in starred)
             + f"), {len(stories) - n_hl} other")
+        if pinfo:
+            status[f"{label} scope"] = (
+                f"news naming {pinfo['short']} or its leaders"
+                + (f", plus the decisions of the {label} government, which {pinfo['short']} leads"
+                   if key in pinfo["leads"] else ""))
         state = {"key": key, "label": label, "stories": stories, "by_section": by_section,
-                 "glance": build_glance({"headlines": articles}, stories), "used_template": False}
+                 "glance": build_glance({"headlines": articles}, stories), "used_template": False,
+                 "party": pinfo["short"] if pinfo else None}
         _assign_story_ids(state)
         states.append(state)
 
@@ -3233,7 +3401,7 @@ def gather_daily_wrap(states_choice: str = "both", day=None, client=None, model:
             else:
                 print(f"  - Asking Sarvam AI to write the {label} wrap-up...")
                 try:
-                    raw = generate_state_narrative(client, model, start_day, end_day, st)
+                    raw = generate_state_narrative(client, model, start_day, end_day, st, pinfo)
                     how = "written by Sarvam AI"
                     if WRAP_CACHE_ENABLED:
                         _WRAP_NARRATIVE_CACHE[nkey] = {"raw": raw, "until": time.time() + WRAP_NARRATIVE_TTL,
@@ -3264,15 +3432,18 @@ def gather_daily_wrap(states_choice: str = "both", day=None, client=None, model:
     used_template = all(st["used_template"] for st in states)
     return {"day": start_day, "start_day": start_day, "end_day": end_day, "days": days, "states": states,
             "narrative": {"headline_of_the_day": headline, "what_to_watch": watch, "states": narr_states},
-            "status": status, "used_template": used_template}
+            "status": status, "used_template": used_template,
+            "party": {"name": pinfo["name"], "short": pinfo["short"], "leads": pinfo["leads"]} if pinfo else None}
 
 
 def wrap_title(wrap: dict) -> str:
     labels = " & ".join(st["label"] for st in wrap["states"])
     start, end = wrap.get("start_day", wrap["day"]), wrap.get("end_day", wrap["day"])
+    who = f"{wrap['party']['short']} " if wrap.get("party") else ""
     if start == end:
-        return f"Daily News Wrap-up: {labels} \u2014 {start:%A, %d %B %Y}"
-    return f"News Wrap-up: {labels} \u2014 {wrap_period_text(start, end)} ({wrap.get('days', (end - start).days + 1)} days)"
+        return f"{who}Daily News Wrap-up: {labels} \u2014 {start:%A, %d %B %Y}"
+    return (f"{who}News Wrap-up: {labels} \u2014 {wrap_period_text(start, end)} "
+            f"({wrap.get('days', (end - start).days + 1)} days)")
 
 
 def wrap_headline_label(wrap: dict) -> str:
@@ -3312,6 +3483,9 @@ def print_wrap(wrap: dict) -> None:
             print(f"\nKEY HIGHLIGHTS\n{rule}")
             for h in sn["key_highlights"]:
                 print(_wrap(h, 70, "   ").replace("   ", "  \u2022 ", 1))
+        if st.get("party"):
+            print(f"\n\u2605 {WRAP_PARTY_POLITICS_LABEL.upper()}\n{rule}")
+            print(_wrap(sn["party_politics"]) if sn["party_politics"] else "  " + WRAP_EMPTY_HIGHLIGHT)
         for key, label, _ in WRAP_HIGHLIGHTS:
             print(f"\n\u2605 {label.upper()}\n{rule}")
             if key in ("government", "policy"):
@@ -3334,7 +3508,7 @@ def print_wrap(wrap: dict) -> None:
                 print(f"  {label}")
                 print(_wrap(text, 70, "      "))
         print(f"\nSOURCES ({len(st['stories'])} stories, by section)\n{rule}")
-        for key in WRAP_SECTION_ORDER:
+        for key in wrap_section_order(st):
             for s in st["by_section"].get(key, []):
                 tag = s.get("court") or (s.get("department") if key in WRAP_HIGHLIGHT_KEYS else None)
                 print(f"  [{WRAP_SECTION_LABELS[key]}{' | ' + tag if tag else ''}] {s['headline']}")
@@ -3371,6 +3545,9 @@ def wrap_markdown(wrap: dict) -> str:
             L += [f"**Overview.** {sn['overview']}", ""]
         if sn["key_highlights"]:
             L += ["### \u2728 Key highlights", ""] + [f"- {h}" for h in sn["key_highlights"]] + [""]
+        if st.get("party"):
+            L += [f"### {WRAP_PARTY_POLITICS_ICON} {WRAP_PARTY_POLITICS_LABEL}", "",
+                  sn["party_politics"] if sn["party_politics"] else f"_{WRAP_EMPTY_HIGHLIGHT}_", ""]
         for key, label, icon in WRAP_HIGHLIGHTS:
             L += [f"### {icon} {label}", ""]
             if key in ("government", "policy"):
@@ -3392,11 +3569,11 @@ def wrap_markdown(wrap: dict) -> str:
         if sn["other"]:
             L += ["### \U0001F4F0 Other news", ""] + [f"- **{label}:** {text}" for label, text in sn["other"].items()] + [""]
         L += [f"#### Sources ({len(st['stories'])} stories)", ""]
-        for key in WRAP_SECTION_ORDER:
+        for key in wrap_section_order(st):
             ss = st["by_section"].get(key, [])
             if not ss:
                 continue
-            L.append(f"**{WRAP_SECTION_LABELS[key]}**")
+            L.append(f"**{wrap_section_label(st, key)}**")
             for s in ss:
                 tag = s.get("court") or (s.get("department") if key in WRAP_HIGHLIGHT_KEYS else None)
                 head = f"[{s['headline']}]({s['url']})" if s.get("url") else s["headline"]
@@ -3414,6 +3591,8 @@ def _wrap_filename(wrap: dict, ext: str) -> str:
     start, end = wrap.get("start_day", wrap["day"]), wrap.get("end_day", wrap["day"])
     when = f"{start:%Y%m%d}" if start == end else f"{start:%Y%m%d}-{end:%Y%m%d}"
     prefix = "daily_wrap" if start == end else "news_wrap"
+    if wrap.get("party"):
+        prefix = re.sub(r"[^a-z0-9]+", "-", wrap["party"]["short"].lower()).strip("-") + "_" + prefix
     return os.path.join("reports", f"{prefix}_{states}_{when}_{datetime.now():%H%M%S}.{ext}")
 
 
@@ -3426,7 +3605,8 @@ def save_wrap_markdown(wrap: dict) -> str:
 
 
 
-_WRAP_PDF_COLORS = {"government": "#1f3a5f", "policy": "#5b3a8c", "ministries": "#1d6b5a", "courts": "#8a2a2a"}
+_WRAP_PDF_COLORS = {"politics": "#9a4b00", "government": "#1f3a5f", "policy": "#5b3a8c", "ministries": "#1d6b5a",
+                    "courts": "#8a2a2a"}
 
 
 def save_wrap_pdf(wrap: dict) -> str:
@@ -3485,6 +3665,10 @@ def save_wrap_pdf(wrap: dict) -> str:
         if sn["key_highlights"]:
             S.append(Paragraph("Key highlights", styles["SubSection"]))
             S += [Paragraph(f"\u2022 {xml_escape(h)}", styles["Item"]) for h in sn["key_highlights"]]
+        if st.get("party"):
+            S += band(WRAP_PARTY_POLITICS_LABEL, _WRAP_PDF_COLORS["politics"])
+            S.append(Paragraph(xml_escape(sn["party_politics"]), styles["Body"]) if sn["party_politics"]
+                     else Paragraph(WRAP_EMPTY_HIGHLIGHT, styles["Empty"]))
         for key, label, _ in WRAP_HIGHLIGHTS:
             S += band(label, _WRAP_PDF_COLORS[key])
             if key in ("government", "policy"):
@@ -3501,10 +3685,10 @@ def save_wrap_pdf(wrap: dict) -> str:
             S += [Paragraph(f"<b>{xml_escape(label)}:</b> {xml_escape(text)}", styles["Body"])
                   for label, text in sn["other"].items()]
         S.append(Paragraph(f"Sources ({len(st['stories'])} stories)", styles["SubSection"]))
-        for key in WRAP_SECTION_ORDER:
+        for key in wrap_section_order(st):
             for s in st["by_section"].get(key, []):
                 tag = s.get("court") or (s.get("department") if key in WRAP_HIGHLIGHT_KEYS else None)
-                S.append(Paragraph(f"[{xml_escape(WRAP_SECTION_LABELS[key])}{' | ' + xml_escape(tag) if tag else ''}] "
+                S.append(Paragraph(f"[{xml_escape(wrap_section_label(st, key))}{' | ' + xml_escape(tag) if tag else ''}] "
                                    f"{_pdf_link(s.get('url', ''), s['headline'])}", styles["Item"]))
                 S.append(Paragraph(xml_escape(story_meta(s)), styles["ItemMeta"]))
     if n.get("what_to_watch"):
@@ -3756,6 +3940,9 @@ def main():
     ap.add_argument("--no-telegram", action="store_true")
     ap.add_argument("--no-brave", action="store_true")
     ap.add_argument("--no-social-news", action="store_true")
+    ap.add_argument("--wrap-party", default="", metavar="PARTY",
+                    help="With --wrap: a wrap-up about one party in AP/Telangana, e.g. BRS, TDP, YSRCP, Congress, BJP, "
+                         "\"Jana Sena\", AIMIM")
     ap.add_argument("--wrap", nargs="?", const="both", default=None, metavar="STATE",
                     help="Daily news wrap-up instead of a politician report: both (default), ap, or telangana")
     ap.add_argument("--date", type=_parse_date, default=None, metavar="YYYY-MM-DD",
@@ -3796,7 +3983,7 @@ def main():
         wrap_choice = detect_wrap_request(raw)
         if wrap_choice:
             rng = detect_wrap_range(raw)
-            run_wrap(wrap_choice, args, client, *(rng or (None, None)))
+            run_wrap(wrap_choice, args, client, *(rng or (None, None)), party=detect_wrap_party(raw) or "")
         else:
             run_one_report(raw, args, client)
 
@@ -3840,7 +4027,7 @@ def run_one_report(raw: str, args, client) -> None:
             print(f"Saved PDF report to: {save_pdf(name, wiki, data, narrative, start_date, end_date, status, used_template, stories)}\n")
 
 
-def run_wrap(choice: str, args, client, start_day=None, end_day=None) -> None:
+def run_wrap(choice: str, args, client, start_day=None, end_day=None, party=None) -> None:
     """Gather and print/save the news wrap-up for one day or a date range.
     Range: --from-date/--to-date (or a period typed in interactive mode, e.g.
     "weekly wrap"); single day: --date; default: today, India time."""
@@ -3860,9 +4047,16 @@ def run_wrap(choice: str, args, client, start_day=None, end_day=None) -> None:
     except ValueError as e:
         print(f"Error: {e}")
         return
+    party = getattr(args, "wrap_party", "") if party is None else party
+    try:
+        pinfo = resolve_wrap_party(party)
+    except ValueError as e:
+        print(f"Error: {e}")
+        return
     labels = " & ".join(WRAP_STATES[k]["label"] for k in keys)
-    print(f"\nBuilding the news wrap-up for {labels} ({wrap_period_text(start_day, end_day)})...")
-    wrap = gather_daily_wrap(choice, start_day, client, args.model, end_day=end_day)
+    print(f"\nBuilding the {pinfo['short'] + ' ' if pinfo else ''}news wrap-up for {labels} "
+          f"({wrap_period_text(start_day, end_day)})...")
+    wrap = gather_daily_wrap(choice, start_day, client, args.model, end_day=end_day, party=party)
     print_wrap(wrap)
     if args.save:
         print(f"Saved wrap-up to: {save_wrap_markdown(wrap)}\n")
