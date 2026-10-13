@@ -2555,7 +2555,7 @@ _COURT_ACTIONS = _rx([
     r"notice\b", r"petition", r"plea\b", r"pils?\b", r"contempt", r"summon", r"warns?\b", r"pulls? up", r"raps?\b",
     r"to decide", r"decides?\b", r"(moves?|moved|approach(es|ed)?|reach(es)?|knocks?) (the )?(hc|high court|supreme court|apex court|court)",
     r"seeks? (response|report|explanation|counter)", r"(transferred|shifted|elevated|sworn in)", r"writ\b", r"trial\b",
-    r"links? pils?",
+    r"links? pils?", r"halt(s|ed)?\b", r"block(s|ed)?\b",
 ])
 
 
@@ -2717,14 +2717,19 @@ def _date_chunks(start_day, end_day, max_chunks: int = 8) -> list:
 
 
 def _dedupe_articles(items: list) -> list:
+    """Drop repeat copies of the SAME article (same link, or same headline from
+    the same outlet). The same headline from DIFFERENT outlets is kept --
+    syndicated copy (e.g. PTI) run by four outlets is four outlets carrying the
+    story, which is exactly what ranks it as widely reported."""
     seen_urls, seen_titles, out = set(), set(), []
     for it in items:
         u = (it.get("url") or "").split("?")[0].rstrip("/")
         t = re.sub(r"\W+", " ", _clean_headline(it.get("headline", ""), it.get("source", "")).lower()).strip()
-        if (u and u in seen_urls) or (t and t in seen_titles):
+        tk = (t, _outlet_key(it.get("source", "")))
+        if (u and u in seen_urls) or (t and tk in seen_titles):
             continue
         seen_urls.add(u)
-        seen_titles.add(t)
+        seen_titles.add(tk)
         out.append(it)
     return out
 
@@ -3040,8 +3045,7 @@ def _story_tags(s: dict, multi: bool) -> str:
 
 def _wrap_system_prompt(multi_day: bool = False, party=None, state_key: str = "") -> str:
     period = "a period of several days" if multi_day else "one day"
-    others = ", ".join(l for k, l in WRAP_OTHER_SECTIONS if not (party and k == "politics"))
-    party_intro, party_rules, party_json = "", "", ""
+    party_intro, party_rule = "", ""
     if party:
         leads = state_key in party["leads"]
         party_intro = (
@@ -3050,57 +3054,49 @@ def _wrap_system_prompt(multi_day: bool = False, party=None, state_key: str = ""
             + (f", plus the decisions of the state government, which {party['short']} leads" if leads else "")
             + f". Write from that angle: what {party['short']}, its leaders and its representatives did, said, "
             "faced or decided. Stay strictly neutral: do not praise or criticise the party.\n")
-        party_rules = (
-            "  party_politics (the FIRST highlighted section) -- a paragraph on the party's own political activity: "
-            "campaigns, statements, leadership and organisation, alliances, rivalries, defections and elections. "
-            f"Report claims made by or against {party['short']} as claims (e.g. \"{party['short']} alleged...\", "
-            f"\"rivals accused {party['short']} of...\"), never as established facts.\n")
-        party_json = '"party_politics": "...", '
-    return (party_intro + 
-        f"You are a senior news editor writing a structured wrap-up of the news in ONE Indian state, covering "
-        f"{period}, for readers who track government and policy. You are given the stories, already grouped so "
-        "each line is ONE story with an id like [S3], how many separate outlets carried it, and the section it "
-        "belongs to. Tags in braces give the court or government department a story concerns.\n"
-        + ("THE FIVE HIGHLIGHTED SECTIONS ARE THE PRIORITY OF THIS WRAP-UP (marked with a star):\n" + party_rules
-           if party else "THE FOUR HIGHLIGHTED SECTIONS ARE THE PRIORITY OF THIS WRAP-UP (marked with a star):\n")
-        + "  government -- a paragraph on the decisions and actions of the Chief Minister, Governor, cabinet and "
-        "senior officials: cabinet decisions, government orders (GOs), appointments, transfers, reviews, sanctions.\n"
-        "  policy -- a paragraph on new or changed policies, schemes, bills, ordinances, assembly business and "
-        "budget allocations: what it is, who it affects, and when it takes effect if the story says so.\n"
-        "  Ministries & Departments and Courts & Rulings are built into tables FROM YOUR story_summaries, so write "
-        "one sentence in story_summaries for EVERY story in those two sections, keyed by its id. For a ministry "
-        "story: what the minister or department did, announced or was directed to do. For a court story: in which "
-        "matter, and what was decided, ordered or filed (e.g. stayed, quashed, dismissed, directed, granted bail, "
-        "issued notice, reserved orders, plea filed), exactly as reported. Say whether it is an interim order or a "
-        "final verdict only if the story makes that clear. Never add legal analysis, consequences or predictions.\n"
-        "Whenever a highlighted section has stories, cover EVERY one of them (merge duplicates) -- including "
-        "single-outlet stories, because rulings and department news are often reported by only one or two outlets. "
-        + ("Leave party_politics, government or policy as \"\" ONLY if that section has no stories.\n" if party
-           else "Leave government or policy as \"\" ONLY if that section has no stories.\n")
-        + 
+        party_rule = (
+            f"  Party Politics & Campaigns: campaigns, statements, leadership, alliances, rivalries, defections, "
+            f"elections. Report claims made by or against {party['short']} as claims (e.g. \"{party['short']} "
+            f"alleged...\", \"rivals accused {party['short']} of...\"), never as established facts.\n")
+    return (
+        party_intro
+        + f"You are a senior news editor turning ONE Indian state's news, covering {period}, into a bulleted "
+        "wrap-up for readers who track government and policy. Each line you are given is ONE story (already merged "
+        "across outlets) with an id like [S3], how many separate outlets carried it, and its section. Tags in braces "
+        "give the court or government department a story concerns.\n"
+        "YOUR JOB: write exactly ONE bullet-point sentence for EVERY story, in story_summaries keyed by its id. The "
+        "code places each sentence under its section and links its sources beside it automatically.\n"
+        + ("THE FIVE HIGHLIGHTED SECTIONS" if party else "THE FOUR HIGHLIGHTED SECTIONS")
+        + " ARE THE PRIORITY OF THIS WRAP-UP (marked with a star): cover EVERY one of them -- every story in them, "
+        "including single-outlet stories, because rulings and department news are often reported by only one or "
+        "two outlets.\n"
+        + party_rule
+        + "  Government & Cabinet Decisions: what the CM, Governor, cabinet or officials decided or did (cabinet "
+        "decisions, government orders, appointments, transfers, reviews, sanctions).\n"
+        "  Policy & Legislation: what the policy, scheme, bill or ordinance is, who it affects, and when it takes "
+        "effect if the story says so.\n"
+        "  Ministries & Departments: what the minister or department did, announced or was directed to do.\n"
+        "  Courts & Rulings: in which matter, and what was decided, ordered or filed (e.g. stayed, quashed, dismissed, "
+        "directed, granted bail, issued notice, reserved orders, plea filed), exactly as reported. Say whether it is "
+        "an interim order or a final verdict only if the story makes that clear. Never add legal analysis, "
+        "consequences or predictions.\n"
         "Rules:\n"
-        "- Use ONLY the stories provided. Never add facts, names, numbers or context that aren't in them, and never "
-        "move a story into a different section.\n"
-        "- Stories carried by more outlets are usually more significant. A single-outlet claim or allegation is "
-        "reported, not established -- word it that way.\n"
-        "- Plain, neutral news English. One fact per sentence, about 25 words or fewer, active voice, no filler "
-        "openers, no opinions.\n"
-        "- After each specific fact, cite the outlet in brackets, e.g. \"(The Hindu)\".\n"
+        "- One sentence per story, about 25 words or fewer, plain neutral news English, active voice. Start with "
+        "the actor or the action -- no filler openers.\n"
+        "- NO REPETITION: never restate another story's point. If two stories are clearly the same event, write the "
+        "sentence once (for the first) and list the other in duplicates, e.g. {\"S7\": \"S2\"} means S7 is the "
+        "same event as S2.\n"
+        "- Do NOT add outlet names, citations or brackets -- the sources are linked beside each point automatically.\n"
+        "- Use ONLY the stories provided. Never add facts, names, numbers or context that aren't in them.\n"
+        "- A single-outlet claim or allegation is reported, not established -- word it that way (\"X alleged...\").\n"
         + ("- This covers SEVERAL DAYS: cover the whole period, not just the latest day; mention the date (e.g. "
            "\"Oct 05\") when a development belongs to a specific day, and say how a story progressed.\n"
            if multi_day else "")
-        + f"- overview: 2-3 sentences on the {'period' if multi_day else 'day'}'s most significant developments.\n"
-        "- key_highlights: 3-5 one-sentence items, most significant first, including the most important item from "
-        "each highlighted section that has stories.\n"
-        f"- other: for EVERY non-highlighted section that has stories ({others}), a map of section name to 1-3 "
-        "sentences.\n"
-        "- headline_of_the_day: ONE sentence naming the single most significant story in this state"
-        + (" over the whole period" if multi_day else "") + ".\n"
-        "- what_to_watch: 1-2 sentences on things the stories say are scheduled or pending (hearings, votes, "
-        "deadlines, implementation dates). Empty string if nothing is scheduled.\n"
+        + "- what_to_watch: 0-4 short items ONLY about things the stories say are scheduled or pending (hearings, "
+        "votes, deadlines, implementation dates) -- never a repeat of what already happened. [] if nothing is "
+        "scheduled.\n"
         "Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
-        '{"headline_of_the_day": "...", "overview": "...", "key_highlights": ["..."], ' + party_json + '"government": "...", '
-        '"policy": "...", "story_summaries": {"S1": "..."}, "other": {"<Section name>": "..."}, "what_to_watch": "..."}'
+        '{"story_summaries": {"S1": "...", "S2": "..."}, "duplicates": {}, "what_to_watch": ["..."]}'
     )
 
 
@@ -3147,51 +3143,12 @@ def _polish_paragraph(text, cap: int = 4) -> str:
 
 
 
-def _as_list(v) -> list:
-    if v is None or v == "":
-        return []
-    return v if isinstance(v, list) else [v]
-
-
-def _normalize_state_narrative(raw) -> dict:
-    """Coerce one state's narrative (from the AI or the template) into the exact
-    shape every renderer expects, polishing the text on the way."""
-    raw = raw if isinstance(raw, dict) else {}
-
-    def pairs(items, name_keys, text_keys, default_name):
-        out = []
-        for it in _as_list(items):
-            if isinstance(it, dict):
-                name = next((str(it[k]).strip() for k in name_keys if it.get(k)), "")
-                text = _polish_paragraph(next((it[k] for k in text_keys if it.get(k)), ""), 3)
-            else:
-                name, text = "", _polish_paragraph(it, 3)
-            if text:
-                out.append({name_keys[0]: name or default_name, text_keys[0]: text})
-        return out
-
-    # "sections" is accepted too: an older / looser reply shape the model sometimes falls back to.
-    other = next((raw[k] for k in ("other", "sections") if isinstance(raw.get(k), dict)), {})
-    return {
-        "overview": _polish_paragraph(raw.get("overview"), 3),
-        "key_highlights": [h for h in (_polish_paragraph(x, 1) for x in _as_list(raw.get("key_highlights"))) if h][:5],
-        "government": _polish_paragraph(raw.get("government"), 5),
-        "policy": _polish_paragraph(raw.get("policy"), 5),
-        "ministries": pairs(raw.get("ministries"), ["department", "ministry"], ["update", "text", "summary"],
-                            "Other departments")[:15],
-        "courts": pairs(raw.get("courts"), ["court"], ["ruling", "judgment", "order", "text", "summary"], "Court")[:12],
-        "party_politics": _polish_paragraph(raw.get("party_politics"), 5),
-        "other": {str(k): v for k, v in ((k, _polish_paragraph(v, 3)) for k, v in other.items()) if v},
-    }
-
-
 def generate_state_narrative(client, model, start_day, end_day, state: dict, party=None) -> dict:
-    """Ask Sarvam for ONE state's wrap-up (raw dict); one corrective retry;
-    raises on failure so the caller can fall back to the template."""
+    """Ask Sarvam for ONE state's bullet sentences (raw dict); one corrective
+    retry; raises on failure so the caller can fall back to the headlines."""
     messages = [{"role": "system", "content": _wrap_system_prompt(start_day != end_day, party, state.get("key", ""))},
                 {"role": "user", "content": _wrap_user_prompt(start_day, end_day, [state])}]
     last_error = "no response"
-    expected = ("overview", "government", "policy", "key_highlights", "story_summaries", "other", "party_politics")
     for attempt in range(2):
         response = _call_sarvam(client, model, messages)
         message = response.choices[0].message
@@ -3199,14 +3156,13 @@ def generate_state_narrative(client, model, start_day, end_day, state: dict, par
         if content:
             content = re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.MULTILINE).strip()
             parsed = extract_json_object(content)
-            if parsed and isinstance(parsed.get("states"), dict):   # tolerate the older multi-state shape
+            if parsed and isinstance(parsed.get("states"), dict):   # tolerate an older multi-state shape
                 inner = parsed["states"].get(state["label"]) or next(
                     (v for k, v in parsed["states"].items() if k.lower() == state["label"].lower()), {}) or {}
-                parsed = {**inner, "headline_of_the_day": parsed.get("headline_of_the_day", ""),
-                          "what_to_watch": parsed.get("what_to_watch", "")}
-            if parsed and any(k in parsed for k in expected):
+                parsed = {**inner, "what_to_watch": parsed.get("what_to_watch", inner.get("what_to_watch"))}
+            if parsed and isinstance(parsed.get("story_summaries"), dict):
                 return parsed
-            last_error = "response did not contain the expected JSON"
+            last_error = "response did not contain story_summaries"
         else:
             last_error = "empty response"
         if attempt == 0:
@@ -3216,102 +3172,176 @@ def generate_state_narrative(client, model, start_day, end_day, state: dict, par
     raise ValueError(last_error)
 
 
-def _ministry_rows(state: dict, summary_for) -> list:
-    groups = {}
-    for s in state["by_section"].get("ministries", []):
-        groups.setdefault(s.get("department") or "Other departments", []).append(s)
-    return [{"department": d, "update": " ".join(summary_for(s) for s in ss[:4])} for d, ss in groups.items()]
+_CITE_TAIL = re.compile(r"\s*\(([^()]{2,90})\)\s*\.?\s*$")
+_DATE_CITE = re.compile(r"^[^,]{2,60},\s*[A-Z][a-z]{2}\s+\d{1,2}(\s*[-\u2013]\s*[A-Za-z]{0,3}\s*\d{1,2})?$")
 
 
-def _court_rows(state: dict, summary_for) -> list:
-    return [{"court": s.get("court") or "Court", "ruling": summary_for(s)} for s in state["by_section"].get("courts", [])]
+def _clean_point(text, outlet_names=()) -> str:
+    """One tidy sentence for a bullet: citations the AI added anyway, like
+    "(The Hindu)" or "(Deccan Chronicle, Oct 04)", are removed -- the sources
+    are linked beside the point instead."""
+    t = " ".join(str(text or "").split())
+    names = [n.lower() for n in outlet_names if n]
+    for _ in range(3):
+        m = _CITE_TAIL.search(t)
+        if not m:
+            break
+        inner = m.group(1)
+        if any(n in inner.lower() for n in names) or _DATE_CITE.match(inner):
+            t = t[:m.start()].rstrip()
+        else:
+            break
+    t = t.rstrip(" ,;:-")
+    if t and t[-1] not in ".!?":
+        t += "."
+    return polish_sentence(t) if t else ""
 
 
-def compose_state_narrative(state: dict, raw: dict, multi: bool = False) -> tuple:
-    """(narrative, backfilled_section_names). Builds one state's final
-    narrative from the AI's reply with three guarantees:
-      * The Ministries and Courts tables contain EXACTLY the stories tagged
-        for them, each under its own department/court tag -- the AI writes the
-        sentence, the code decides the row. Nothing from another section can
-        leak in (e.g. a crime story under Health), and none can go missing.
-      * A highlighted section that has stories is NEVER shown as "Nothing
-        reported": if the AI left it empty, it is filled from the stories.
-      * Every non-highlighted section with stories appears under Other news."""
-    raw = raw if isinstance(raw, dict) else {}
-    summaries = raw.get("story_summaries") if isinstance(raw.get("story_summaries"), dict) else {}
-
-    def summary_for(s):
-        return _polish_paragraph(summaries.get(s.get("_sid", "")), 2) or _story_sentence(s, multi)
-
-    out = _normalize_state_narrative({**raw, "ministries": _ministry_rows(state, summary_for),
-                                      "courts": _court_rows(state, summary_for)})
-    tmpl = _template_state_narrative(state, multi)
-    backfilled = []
-    for key in ("government", "policy"):
-        if state["by_section"].get(key) and not out[key]:
-            out[key] = tmpl[key]
-            backfilled.append(WRAP_SECTION_LABELS[key])
-    if not out["overview"] and state["stories"]:
-        out["overview"] = tmpl["overview"]
-        backfilled.append("Overview")
-    if state.get("party"):
-        if state["by_section"].get("politics") and not out["party_politics"]:
-            out["party_politics"] = tmpl["party_politics"]
-            backfilled.append(WRAP_PARTY_POLITICS_LABEL)
-        out["other"].pop(WRAP_SECTION_LABELS["politics"], None)
-    if not out["key_highlights"]:
-        out["key_highlights"] = tmpl["key_highlights"]
-    for label, text in tmpl["other"].items():
-        if label not in out["other"]:
-            out["other"][label] = text
-            backfilled.append(label)
-    ordered = {WRAP_SECTION_LABELS[k]: out["other"][WRAP_SECTION_LABELS[k]] for k, _ in WRAP_OTHER_SECTIONS
-               if WRAP_SECTION_LABELS[k] in out["other"]}
-    ordered.update({k: v for k, v in out["other"].items() if k not in WRAP_SECTION_LABELS.values()})
-    out["other"] = ordered
-    return out, backfilled
+def _story_link_list(stories: list) -> tuple:
+    """([{name, url}] one per outlet with an article URL, all outlet keys)."""
+    links, seen, okeys = [], set(), set()
+    for st_ in stories:
+        items = st_.get("items") or [{"source": o, "url": st_.get("url", "")} for o in st_.get("outlets", [])]
+        for it in items:
+            k = _outlet_key(it.get("source", ""))
+            if not k:
+                continue
+            okeys.add(k)
+            if k not in seen and it.get("url"):
+                seen.add(k)
+                links.append({"name": it["source"], "url": it["url"]})
+    return links, okeys
 
 
-def _story_sentence(s: dict, multi: bool = False) -> str:
-    src = s["outlets"][0] if s["outlets"] else "source unknown"
-    more = f" and {len(s['outlets']) - 1} other outlet(s)" if len(s["outlets"]) > 1 else ""
-    when = f", {story_date_range(s)}" if (multi and story_date_range(s)) else ""
-    return f"{s['headline'].rstrip('.')} ({src}{more}{when})."
+def _make_point(stories: list, text: str, key: str, multi: bool) -> dict:
+    lead = stories[0]
+    links, okeys = _story_link_list(stories)
+    tag = lead.get("court") if key == "courts" else (lead.get("department") if key == "ministries" else None)
+    if key == "ministries" and not tag:
+        tag = "Other departments"
+    if key == "courts" and not tag:
+        tag = "Court"
+    return {"text": text, "links": links, "okeys": sorted(okeys), "when": story_date_range(lead) if multi else "",
+            "tag": tag, "top": False, "sids": [x.get("_sid") for x in stories], "headlines": [x["headline"] for x in stories]}
 
 
-def _template_state_narrative(state: dict, multi: bool = False) -> dict:
-    """Keyword-based narrative for one state, in the same shape as the AI's."""
-    bs = state["by_section"]
-    sent = lambda s: _story_sentence(s, multi)
-    starred = [k for k in wrap_section_order(state) if wrap_is_starred(state, k)]
-    highlights = [sent(bs[k][0]) for k in starred if bs.get(k)]
-    rest = sorted((s for k, ss in bs.items() if k not in starred for s in ss),
-                  key=lambda s: -len(s["outlets"]))
-    highlights += [sent(s) for s in rest[: max(0, 5 - len(highlights))]]
-    n_hl = sum(len(bs.get(k, [])) for k in starred)
-    top = max(state["stories"], key=lambda s: (len(s["outlets"]), s["count"]), default=None)
-    raw = {
-        "overview": (f"{len(state['stories'])} stories in this wrap-up, {n_hl} of them in the highlighted government, "
-                     f"policy, ministry and court sections. The most widely covered: {sent(top)}") if top else "",
-        "key_highlights": highlights[:5],
-        "government": " ".join(sent(s) for s in bs.get("government", [])[:5]),
-        "policy": " ".join(sent(s) for s in bs.get("policy", [])[:5]),
-        "ministries": _ministry_rows(state, sent),
-        "courts": _court_rows(state, sent),
-        "party_politics": " ".join(sent(s) for s in bs.get("politics", [])[:5]) if state.get("party") else "",
-        "other": {WRAP_SECTION_LABELS[k]: " ".join(sent(s) for s in bs[k][:3])
-                  for k, _ in WRAP_OTHER_SECTIONS if bs.get(k) and not (state.get("party") and k == "politics")},
-    }
-    return _normalize_state_narrative(raw)
+def _point_words(pt: dict) -> set:
+    return _story_words(pt["text"], set())
 
 
-def build_template_wrap(states: list, multi: bool = False) -> dict:
-    """Keyword-based fallback for every state (used when Sarvam is unavailable)."""
-    out = {"states": {st["label"]: _template_state_narrative(st, multi) for st in states}, "what_to_watch": ""}
-    everything = [s for st in states for s in st["stories"]]
-    best = max(everything, key=lambda s: (len(s["outlets"]), s["count"]), default=None)
-    out["headline_of_the_day"] = _story_sentence(best, multi) if best else ""
-    return out
+def _same_point(a: dict, b: dict) -> bool:
+    """Two bullets are the same news if they link the same article, or say
+    essentially the same thing."""
+    if {l["url"] for l in a["links"]} & {l["url"] for l in b["links"]}:
+        return True
+    wa, wb = _point_words(a), _point_words(b)
+    if not wa or not wb:
+        return False
+    shared = wa & wb
+    return len(shared) >= 4 and len(shared) / min(len(wa), len(wb)) >= 0.6
+
+
+def _absorb(keep: dict, dup: dict) -> None:
+    """Fold a repeated point into the one being kept: its sources join the kept point's links."""
+    seen = {_outlet_key(l["name"]) for l in keep["links"]}
+    for l in dup["links"]:
+        if _outlet_key(l["name"]) not in seen:
+            seen.add(_outlet_key(l["name"]))
+            keep["links"].append(l)
+    keep["okeys"] = sorted(set(keep["okeys"]) | set(dup["okeys"]))
+    keep["sids"] += dup["sids"]
+    keep["headlines"] += dup["headlines"]
+    keep["top"] = keep["top"] or dup["top"]
+
+
+def build_state_points(state: dict, summaries=None, duplicates=None, multi: bool = False) -> tuple:
+    """({section_key: [point]}, notes). EXACTLY ONE bullet per story: the AI's
+    sentence for it if there is one, otherwise the story's own headline. Sources
+    are attached to each point. Repeats are removed -- stories the AI marked as
+    the same event, and bullets that link the same article or say the same
+    thing -- and their sources are folded into the point that's kept."""
+    summaries = summaries if isinstance(summaries, dict) else {}
+    by_sid = {x["_sid"]: x for x in state["stories"] if x.get("_sid")}
+    merge_into = {}
+    for b, a in (duplicates if isinstance(duplicates, dict) else {}).items():
+        if b in by_sid and a in by_sid and a != b and a not in merge_into and b not in merge_into.values():
+            merge_into[b] = a
+    points, kept, used_headline, merged = {}, [], 0, len(merge_into)
+    # Any outlet in this state's news counts as a citation to strip -- including
+    # one the AI wrongly attributes to a story that outlet never carried.
+    state_outlets = sorted({o for x in state["stories"] for o in x.get("outlets", [])})
+    for key in wrap_section_order(state):
+        for st_ in state["by_section"].get(key, []):
+            sid = st_.get("_sid")
+            if sid in merge_into:
+                continue
+            group = [st_] + [by_sid[b] for b, a in merge_into.items() if a == sid]
+            text = _clean_point(summaries.get(sid), state_outlets) if summaries.get(sid) else ""
+            if not text:
+                text = _clean_point(st_["headline"], state_outlets)
+                used_headline += 1 if summaries else 0
+            pt = _make_point(group, text, key, multi)
+            pt["sids"] = [f"{state['key']}:{x}" for x in pt["sids"]]   # ids are per state; keep them unique overall
+            dup_of = next((k for k in kept if _same_point(k, pt)), None)
+            if dup_of:
+                _absorb(dup_of, pt)
+                merged += 1
+                continue
+            kept.append(pt)
+            points.setdefault(key, []).append(pt)
+    return points, {"used_headline": used_headline, "merged": merged}
+
+
+def _own_score(pt: dict, state_key: str) -> int:
+    """How much a point is about this state: its places/people named, minus the
+    other state's (so "Hyderabad metro fares ... AP commuters affected" counts as
+    a Telangana story, not an Andhra Pradesh one)."""
+    text = " ".join([pt["text"]] + pt["headlines"])
+    own = _rx(_WRAP_OWN_PLACES[state_key])
+    other = _rx([f for k, frags in _WRAP_OWN_PLACES.items() if k != state_key for f in frags])
+    return (len({m.group(0).lower() for m in own.finditer(text)})
+            - len({m.group(0).lower() for m in other.finditer(text)}))
+
+
+def dedupe_across_states(states: list, points_by_label: dict) -> int:
+    """A story that turns up in both states' wrap-ups is kept once -- in the
+    state it is more about (by its place and people names), else the first."""
+    removed = 0
+    for j in range(1, len(states)):
+        for i in range(j):
+            pi_all, pj_all = points_by_label[states[i]["label"]], points_by_label[states[j]["label"]]
+            for kj in list(pj_all):
+                for pj in list(pj_all[kj]):
+                    hit = next(((ki, pi) for ki in pi_all for pi in pi_all[ki] if _same_point(pi, pj)), None)
+                    if not hit:
+                        continue
+                    ki, pi = hit
+                    if _own_score(pj, states[j]["key"]) > _own_score(pi, states[i]["key"]):
+                        pi_all[ki].remove(pi)
+                        _absorb(pj, pi)
+                    else:
+                        pj_all[kj].remove(pj)
+                        _absorb(pi, pj)
+                    removed += 1
+            for d in (pi_all, pj_all):
+                for k in [k for k, v in d.items() if not v]:
+                    del d[k]
+    return removed
+
+
+def _clean_watch(items, state: dict, points: dict) -> list:
+    """What-to-watch items: upcoming things only -- anything that just restates
+    a bullet already in the wrap-up is dropped."""
+    names = [o for x in state["stories"] for o in x.get("outlets", [])]
+    if isinstance(items, str):
+        items = [x for x in split_sentences(items) if x.strip()]
+    out, all_points = [], [pt for pts in points.values() for pt in pts]
+    for it in (items or [])[:6]:
+        t = _clean_point(it, names)
+        probe = {"text": t, "links": []}
+        if t and not any(_same_point(probe, pt) for pt in all_points) and t not in out:
+            out.append(t)
+    return out[:4]
 
 
 def _narrative_key(model, start_day, end_day, state: dict) -> str:
@@ -3384,11 +3414,11 @@ def gather_daily_wrap(states_choice: str = "both", day=None, client=None, model:
         _assign_story_ids(state)
         states.append(state)
 
-    narr_states, heads, watches = {}, {}, {}
+    narr_states, notes = {}, {}
     for st in states:
         label = st["label"]
         if not st["stories"]:
-            narr_states[label] = _normalize_state_narrative({})
+            narr_states[label] = {"points": {}, "what_to_watch": []}
             st["used_template"] = True
             status[f"{label} summary"] = "nothing to summarise (no stories found)"
             continue
@@ -3407,31 +3437,53 @@ def gather_daily_wrap(states_choice: str = "both", day=None, client=None, model:
                         _WRAP_NARRATIVE_CACHE[nkey] = {"raw": raw, "until": time.time() + WRAP_NARRATIVE_TTL,
                                                        "at": f"{utc_now() + IST_OFFSET:%H:%M}"}
                 except Exception as e:
-                    print(f"    Warning: Sarvam call failed for {label} ({_short_error(e)}). Using a template instead.")
-                    how = f"Sarvam failed ({_short_error(e)}); template used"
+                    print(f"    Warning: Sarvam call failed for {label} ({_short_error(e)}). Using the headlines instead.")
+                    how = f"Sarvam failed ({_short_error(e)}); headlines used"
         if raw is None:
-            narr_states[label] = _template_state_narrative(st, multi)
             st["used_template"] = True
-            status[f"{label} summary"] = how or "template (Sarvam not available)"
-            heads[label] = _story_sentence(max(st["stories"], key=lambda s: (len(s["outlets"]), s["count"])), multi)
-            continue
-        narr, backfilled = compose_state_narrative(st, raw, multi)
-        narr_states[label] = narr
-        heads[label] = _polish_paragraph(raw.get("headline_of_the_day"), 1)
-        watches[label] = _polish_paragraph(raw.get("what_to_watch"), 2)
-        status[f"{label} summary"] = how + (f"; filled from the stories where the AI left gaps: {', '.join(backfilled)}"
-                                           if backfilled else "")
+            pts, info = build_state_points(st, None, None, multi)
+            narr_states[label] = {"points": pts, "what_to_watch": []}
+            how = how or "headlines used (Sarvam not available)"
+        else:
+            pts, info = build_state_points(st, raw.get("story_summaries"), raw.get("duplicates"), multi)
+            narr_states[label] = {"points": pts, "what_to_watch": _clean_watch(raw.get("what_to_watch"), st, pts)}
+        extra = []
+        if info["used_headline"]:
+            extra.append(f"the AI skipped {info['used_headline']} stor{'y' if info['used_headline'] == 1 else 'ies'}, "
+                         "so the headline was used")
+        if info["merged"]:
+            extra.append(f"{info['merged']} repeated point(s) merged")
+        status[f"{label} summary"] = how + ("; " + "; ".join(extra) if extra else "")
 
-    # One headline for the whole wrap-up: from the state whose biggest story is the most widely carried.
-    def biggest(st):
-        return max((len(s["outlets"]) for s in st["stories"]), default=0)
-    lead = max((st for st in states if heads.get(st["label"])), key=biggest, default=None)
-    headline = heads.get(lead["label"], "") if lead else ""
-    watch = (" ".join(f"{label}: {w}" for label, w in watches.items() if w) if len(states) > 1
-             else next(iter(watches.values()), ""))
+    if len(states) > 1:
+        moved = dedupe_across_states(states, {l: n["points"] for l, n in narr_states.items()})
+        if moved:
+            status["Across states"] = f"{moved} story(ies) reported for both states kept once, in the state they're more about"
+
+    # Each state's most widely reported story is starred where it sits (not repeated in a banner). Per state,
+    # so a state's section reads the same whether it is run alone or alongside the other state.
+    for n in narr_states.values():
+        state_points = [pt for pts in n["points"].values() for pt in pts]
+        top = max(state_points, key=lambda pt: len(pt["okeys"]), default=None)
+        if top and len(top["okeys"]) >= 2:
+            top["top"] = True
+    all_points = [pt for n in narr_states.values() for pts in n["points"].values() for pt in pts]
+    # What to watch, checked once against the WHOLE wrap-up: an item that restates any point (in either state)
+    # or an item already listed is dropped.
+    watch, kept_watch = [], []
+    for label, n in narr_states.items():
+        mine = []
+        for w_ in n["what_to_watch"]:
+            probe = {"text": w_, "links": []}
+            if any(_same_point(probe, pt) for pt in all_points) or any(_same_point(probe, k) for k in kept_watch):
+                continue
+            kept_watch.append(probe)
+            mine.append(w_)
+            watch.append(f"{label}: {w_}" if len(states) > 1 else w_)
+        n["what_to_watch"] = mine
     used_template = all(st["used_template"] for st in states)
     return {"day": start_day, "start_day": start_day, "end_day": end_day, "days": days, "states": states,
-            "narrative": {"headline_of_the_day": headline, "what_to_watch": watch, "states": narr_states},
+            "narrative": {"states": narr_states, "what_to_watch": watch},
             "status": status, "used_template": used_template,
             "party": {"name": pinfo["name"], "short": pinfo["short"], "leads": pinfo["leads"]} if pinfo else None}
 
@@ -3456,131 +3508,148 @@ WRAP_EMPTY_HIGHLIGHT = "Nothing reported in this period."
 
 
 def wrap_state_narrative(wrap: dict, state: dict) -> dict:
-    return _normalize_state_narrative(wrap["narrative"]["states"].get(state["label"]) or {})
+    return wrap["narrative"]["states"].get(state["label"]) or {"points": {}, "what_to_watch": []}
+
+
+def wrap_point_groups(points: list, key: str) -> list:
+    """[(group_label or None, [points])]: Ministries grouped by department and
+    Courts by court, in first-seen order; other sections as one group."""
+    if key not in ("ministries", "courts"):
+        return [(None, points)]
+    groups = {}
+    for pt in points:
+        groups.setdefault(pt["tag"], []).append(pt)
+    return list(groups.items())
+
+
+def wrap_sections_for_display(state: dict, narr: dict) -> tuple:
+    """([(key, label, icon_or_None, points)] highlighted, [(key, label, points)] other)."""
+    pts = narr["points"]
+    icons = {k: icon for k, _, icon in WRAP_HIGHLIGHTS}
+    icons["politics"] = WRAP_PARTY_POLITICS_ICON
+    starred, other = [], []
+    for key in wrap_section_order(state):
+        if wrap_is_starred(state, key):
+            starred.append((key, wrap_section_label(state, key), icons.get(key), pts.get(key, [])))
+        elif pts.get(key):
+            other.append((key, wrap_section_label(state, key), pts[key]))
+    return starred, other
+
+
+def _md_link_text(t: str) -> str:
+    return str(t).replace("[", "(").replace("]", ")")
+
+
+def _md_url(u: str) -> str:
+    return str(u).replace(" ", "%20").replace("(", "%28").replace(")", "%29")
+
+
+def point_sources_md(pt: dict, max_links: int = 3) -> str:
+    shown = pt["links"][:max_links]
+    more = max(0, len(pt["okeys"]) - len(shown))
+    out = " \u00b7 ".join(f"[{_md_link_text(l['name'])}]({_md_url(l['url'])})" for l in shown)
+    if more:
+        out += f" +{more} more"
+    return out
+
+
+def point_markdown(pt: dict) -> str:
+    """'⭐ Point. — [The Hindu](url) · [Sakshi](url) +2 more · Oct 07 – Oct 11'"""
+    src = point_sources_md(pt)
+    return (("\u2b50 " if pt["top"] else "") + pt["text"] + (f" \u2014 {src}" if src else "")
+            + (f" \u00b7 _{pt['when']}_" if pt.get("when") else ""))
+
+
+WRAP_TOP_LEGEND = "\u2b50 marks each state's most widely reported story."
 
 
 def print_wrap(wrap: dict) -> None:
     bar, rule = "=" * 70, "-" * 70
     n = wrap["narrative"]
-    multi = wrap.get("days", 1) > 1
     print(f"\n{bar}\n{wrap_title(wrap).upper()}\n{bar}")
     if wrap["used_template"]:
-        print(_wrap("(Keyword-based wrap-up: Sarvam AI wasn't available, so stories are listed rather than summarised.)"))
-    if n.get("headline_of_the_day"):
-        print(f"\n{wrap_headline_label(wrap).upper()}\n{rule}")
-        print(_wrap(n["headline_of_the_day"]))
+        print(_wrap("(Sarvam AI wasn't available, so each point is the story's own headline.)"))
+    if any(pt["top"] for nn in n["states"].values() for pts in nn["points"].values() for pt in pts):
+        print(_wrap(WRAP_TOP_LEGEND))
+
+    def bullet(pt, indent="  "):
+        print(_wrap(("\u2b50 " if pt["top"] else "") + pt["text"], 70, indent + "  ").replace(indent + "  ", indent + "\u2022 ", 1))
+        if pt.get("when"):
+            print(f"{indent}    {pt['when']}")
+        shown = pt["links"][:3]
+        for l in shown:
+            print(f"{indent}    {l['name']}: {l['url']}")
+        more = len(pt["okeys"]) - len(shown)
+        if more > 0:
+            print(f"{indent}    (+{more} more outlet{'s' if more != 1 else ''})")
+
     for st in wrap["states"]:
         sn = wrap_state_narrative(wrap, st)
         print(f"\n\n{'#' * 70}\n  {st['label'].upper()}\n{'#' * 70}")
         print(_wrap(glance_text(st["glance"])))
         if not st["stories"]:
-            print(_wrap(f"No news found for {st['label']} in this period."))
+            who = f"{st['party']} " if st.get("party") else ""
+            print(_wrap(f"No {who}news found for {st['label']} in this period."))
             continue
-        if sn["overview"]:
-            print(f"\nOVERVIEW\n{rule}")
-            print(_wrap(sn["overview"]))
-        if sn["key_highlights"]:
-            print(f"\nKEY HIGHLIGHTS\n{rule}")
-            for h in sn["key_highlights"]:
-                print(_wrap(h, 70, "   ").replace("   ", "  \u2022 ", 1))
-        if st.get("party"):
-            print(f"\n\u2605 {WRAP_PARTY_POLITICS_LABEL.upper()}\n{rule}")
-            print(_wrap(sn["party_politics"]) if sn["party_politics"] else "  " + WRAP_EMPTY_HIGHLIGHT)
-        for key, label, _ in WRAP_HIGHLIGHTS:
+        starred, other = wrap_sections_for_display(st, sn)
+        for key, label, _icon, pts in starred:
             print(f"\n\u2605 {label.upper()}\n{rule}")
-            if key in ("government", "policy"):
-                print(_wrap(sn[key]) if sn[key] else "  " + WRAP_EMPTY_HIGHLIGHT)
-            elif key == "ministries":
-                if not sn["ministries"]:
-                    print("  " + WRAP_EMPTY_HIGHLIGHT)
-                for m in sn["ministries"]:
-                    print(f"  \u2022 {m['department']}")
-                    print(_wrap(m["update"], 70, "      "))
-            else:
-                if not sn["courts"]:
-                    print("  " + WRAP_EMPTY_HIGHLIGHT)
-                for c in sn["courts"]:
-                    print(f"  \u2022 {c['court']}")
-                    print(_wrap(c["ruling"], 70, "      "))
-        if sn["other"]:
+            if not pts:
+                print("  " + WRAP_EMPTY_HIGHLIGHT)
+            for group, gpts in wrap_point_groups(pts, key):
+                if group:
+                    print(f"  {group}")
+                for pt in gpts:
+                    bullet(pt, "    " if group else "  ")
+        if other:
             print(f"\nOTHER NEWS\n{rule}")
-            for label, text in sn["other"].items():
+            for key, label, pts in other:
                 print(f"  {label}")
-                print(_wrap(text, 70, "      "))
-        print(f"\nSOURCES ({len(st['stories'])} stories, by section)\n{rule}")
-        for key in wrap_section_order(st):
-            for s in st["by_section"].get(key, []):
-                tag = s.get("court") or (s.get("department") if key in WRAP_HIGHLIGHT_KEYS else None)
-                print(f"  [{WRAP_SECTION_LABELS[key]}{' | ' + tag if tag else ''}] {s['headline']}")
-                print(f"      {story_meta(s)}")
-                if s.get("url"):
-                    print(f"      {s['url']}")
+                for pt in pts:
+                    bullet(pt, "    ")
     if n.get("what_to_watch"):
         print(f"\nWHAT TO WATCH\n{rule}")
-        print(_wrap(n["what_to_watch"]))
+        for w in n["what_to_watch"]:
+            print(_wrap(w, 70, "    ").replace("    ", "  \u2022 ", 1))
     print(f"\nSOURCES CHECKED\n{rule}")
     for label, st in wrap["status"].items():
         print(_wrap(f"{label}: {st}"))
     print()
 
 
-def _md_cell(text) -> str:
-    return " ".join(str(text or "").split()).replace("|", "\\|")
-
-
 def wrap_markdown(wrap: dict) -> str:
     n = wrap["narrative"]
     L = [f"# \U0001F5DE\ufe0f {wrap_title(wrap)}", "", f"_Generated {utc_now() + IST_OFFSET:%Y-%m-%d %H:%M} IST_", ""]
     if wrap["used_template"]:
-        L += ["> Keyword-based wrap-up: Sarvam AI wasn't available, so stories are listed rather than summarised.", ""]
-    if n.get("headline_of_the_day"):
-        L += [f"> **\U0001F4F0 {wrap_headline_label(wrap)}:** {n['headline_of_the_day']}", ""]
+        L += ["> Sarvam AI wasn't available, so each point is the story's own headline.", ""]
+    if any(pt["top"] for nn in n["states"].values() for pts in nn["points"].values() for pt in pts):
+        L += [f"_{WRAP_TOP_LEGEND}_", ""]
     for st in wrap["states"]:
         sn = wrap_state_narrative(wrap, st)
         L += ["---", "", f"## {st['label']}", "", f"_{glance_text(st['glance'])}_", ""]
         if not st["stories"]:
-            L += [f"No news found for {st['label']} in this period.", ""]
+            who = f"{st['party']} " if st.get("party") else ""
+            L += [f"No {who}news found for {st['label']} in this period.", ""]
             continue
-        if sn["overview"]:
-            L += [f"**Overview.** {sn['overview']}", ""]
-        if sn["key_highlights"]:
-            L += ["### \u2728 Key highlights", ""] + [f"- {h}" for h in sn["key_highlights"]] + [""]
-        if st.get("party"):
-            L += [f"### {WRAP_PARTY_POLITICS_ICON} {WRAP_PARTY_POLITICS_LABEL}", "",
-                  sn["party_politics"] if sn["party_politics"] else f"_{WRAP_EMPTY_HIGHLIGHT}_", ""]
-        for key, label, icon in WRAP_HIGHLIGHTS:
+        starred, other = wrap_sections_for_display(st, sn)
+        for key, label, icon, pts in starred:
             L += [f"### {icon} {label}", ""]
-            if key in ("government", "policy"):
-                L += [sn[key] if sn[key] else f"_{WRAP_EMPTY_HIGHLIGHT}_", ""]
-            elif key == "ministries":
-                if sn["ministries"]:
-                    L += ["| Department | Update |", "|---|---|"]
-                    L += [f"| **{_md_cell(m['department'])}** | {_md_cell(m['update'])} |" for m in sn["ministries"]]
-                else:
-                    L.append(f"_{WRAP_EMPTY_HIGHLIGHT}_")
-                L.append("")
-            else:
-                if sn["courts"]:
-                    L += ["| Court | Ruling / order |", "|---|---|"]
-                    L += [f"| **{_md_cell(c['court'])}** | {_md_cell(c['ruling'])} |" for c in sn["courts"]]
-                else:
-                    L.append(f"_{WRAP_EMPTY_HIGHLIGHT}_")
-                L.append("")
-        if sn["other"]:
-            L += ["### \U0001F4F0 Other news", ""] + [f"- **{label}:** {text}" for label, text in sn["other"].items()] + [""]
-        L += [f"#### Sources ({len(st['stories'])} stories)", ""]
-        for key in wrap_section_order(st):
-            ss = st["by_section"].get(key, [])
-            if not ss:
+            if not pts:
+                L += [f"_{WRAP_EMPTY_HIGHLIGHT}_", ""]
                 continue
-            L.append(f"**{wrap_section_label(st, key)}**")
-            for s in ss:
-                tag = s.get("court") or (s.get("department") if key in WRAP_HIGHLIGHT_KEYS else None)
-                head = f"[{s['headline']}]({s['url']})" if s.get("url") else s["headline"]
-                L.append(f"- {head}" + (f" `{tag}`" if tag else "") + f" \u2014 _{story_meta(s)}_")
+            for group, gpts in wrap_point_groups(pts, key):
+                if group:
+                    L.append(f"- **{group}**")
+                L += [("  - " if group else "- ") + point_markdown(pt) for pt in gpts]
+            L.append("")
+        if other:
+            L += ["### \U0001F4F0 Other news", ""]
+            for key, label, pts in other:
+                L.append(f"- **{label}**")
+                L += ["  - " + point_markdown(pt) for pt in pts]
             L.append("")
     if n.get("what_to_watch"):
-        L += ["---", "", "## \U0001F440 What to Watch", "", n["what_to_watch"], ""]
+        L += ["---", "", "## \U0001F440 What to Watch", ""] + [f"- {w}" for w in n["what_to_watch"]] + [""]
     L += ["---", "", "## Sources Checked", ""] + [f"- **{k}:** {v}" for k, v in wrap["status"].items()] + [""]
     return "\n".join(L)
 
@@ -3616,8 +3685,11 @@ def save_wrap_pdf(wrap: dict) -> str:
     styles = _pdf_styles()
     band_style = ParagraphStyle("WrapBand", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11,
                                 leading=14, textColor=colors.white)
-    cell = ParagraphStyle("WrapCell", parent=styles["BodyText"], fontSize=9, leading=12)
-    cell_b = ParagraphStyle("WrapCellB", parent=cell, fontName="Helvetica-Bold")
+    bullet_style = ParagraphStyle("WrapBullet", parent=styles["BodyText"], fontSize=9.5, leading=13, leftIndent=14,
+                                  bulletIndent=4, spaceAfter=3)
+    sub_bullet = ParagraphStyle("WrapSubBullet", parent=bullet_style, leftIndent=28, bulletIndent=18)
+    group_style = ParagraphStyle("WrapGroup", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=9.5,
+                                 leading=13, leftIndent=4, spaceBefore=3)
     width = 6.5 * inch
 
     def band(text, color):
@@ -3627,72 +3699,50 @@ def save_wrap_pdf(wrap: dict) -> str:
                                ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
         return [Spacer(1, 8), t, Spacer(1, 4)]
 
-    def two_col(rows, headers):
-        data = [[Paragraph(f"<b>{xml_escape(h)}</b>", cell) for h in headers]]
-        data += [[Paragraph(xml_escape(a), cell_b), Paragraph(xml_escape(b), cell)] for a, b in rows]
-        t = Table(data, colWidths=[1.9 * inch, width - 1.9 * inch], repeatRows=1)
-        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#bbbbbb")),
-                               ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")),
-                               ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-        return t
-
-    def boxed(text, color="#fff6d6"):
-        t = Table([[Paragraph(text, styles["Body"])]], colWidths=[width])
-        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(color)),
-                               ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d9c27a")),
-                               ("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 6),
-                               ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
-        return t
+    def point_para(pt, style):
+        shown = pt["links"][:3]
+        more = len(pt["okeys"]) - len(shown)
+        src = " \u00b7 ".join(_pdf_link(l["url"], l["name"]) for l in shown) + (f" +{more} more" if more > 0 else "")
+        text = ("<b>[Top story]</b> " if pt["top"] else "") + xml_escape(pt["text"])
+        tail = (f" <font color='#666666'>\u2014</font> {src}" if src else "") + (
+            f" <font color='#666666'>\u00b7 {xml_escape(pt['when'])}</font>" if pt.get("when") else "")
+        return Paragraph(text + tail, style, bulletText="\u2022")
 
     n = wrap["narrative"]
     S = [Paragraph(xml_escape(wrap_title(wrap)), styles["ReportTitle"]),
          Paragraph(f"Generated {utc_now() + IST_OFFSET:%Y-%m-%d %H:%M} IST", styles["Meta"])]
     if wrap["used_template"]:
-        S.append(Paragraph("<i>Keyword-based wrap-up: Sarvam AI wasn't available, so stories are listed rather "
-                           "than summarised.</i>", styles["Note"]))
-    if n.get("headline_of_the_day"):
-        S.append(boxed(f"<b>{xml_escape(wrap_headline_label(wrap))}:</b> {xml_escape(n['headline_of_the_day'])}"))
+        S.append(Paragraph("<i>Sarvam AI wasn't available, so each point is the story's own headline.</i>",
+                           styles["Note"]))
+    if any(pt["top"] for nn in n["states"].values() for pts in nn["points"].values() for pt in pts):
+        S.append(Paragraph("<i>[Top story] marks each state's most widely reported story. Outlet names are links to "
+                           "the articles.</i>", styles["ItemMeta"]))
     for st in wrap["states"]:
         sn = wrap_state_narrative(wrap, st)
         S += [Spacer(1, 10), HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#333333")),
               Paragraph(xml_escape(st["label"]), styles["Section"]),
               Paragraph(xml_escape(glance_text(st["glance"])), styles["ItemMeta"])]
         if not st["stories"]:
-            S.append(Paragraph(xml_escape(f"No news found for {st['label']} in this period."), styles["Empty"]))
+            who = f"{st['party']} " if st.get("party") else ""
+            S.append(Paragraph(xml_escape(f"No {who}news found for {st['label']} in this period."), styles["Empty"]))
             continue
-        if sn["overview"]:
-            S.append(Paragraph(f"<b>Overview.</b> {xml_escape(sn['overview'])}", styles["Body"]))
-        if sn["key_highlights"]:
-            S.append(Paragraph("Key highlights", styles["SubSection"]))
-            S += [Paragraph(f"\u2022 {xml_escape(h)}", styles["Item"]) for h in sn["key_highlights"]]
-        if st.get("party"):
-            S += band(WRAP_PARTY_POLITICS_LABEL, _WRAP_PDF_COLORS["politics"])
-            S.append(Paragraph(xml_escape(sn["party_politics"]), styles["Body"]) if sn["party_politics"]
-                     else Paragraph(WRAP_EMPTY_HIGHLIGHT, styles["Empty"]))
-        for key, label, _ in WRAP_HIGHLIGHTS:
-            S += band(label, _WRAP_PDF_COLORS[key])
-            if key in ("government", "policy"):
-                S.append(Paragraph(xml_escape(sn[key]), styles["Body"]) if sn[key]
-                         else Paragraph(WRAP_EMPTY_HIGHLIGHT, styles["Empty"]))
-            elif key == "ministries":
-                S.append(two_col([(m["department"], m["update"]) for m in sn["ministries"]], ["Department", "Update"])
-                         if sn["ministries"] else Paragraph(WRAP_EMPTY_HIGHLIGHT, styles["Empty"]))
-            else:
-                S.append(two_col([(c["court"], c["ruling"]) for c in sn["courts"]], ["Court", "Ruling / order"])
-                         if sn["courts"] else Paragraph(WRAP_EMPTY_HIGHLIGHT, styles["Empty"]))
-        if sn["other"]:
+        starred, other = wrap_sections_for_display(st, sn)
+        for key, label, _icon, pts in starred:
+            S += band(label, _WRAP_PDF_COLORS.get(key, "#333333"))
+            if not pts:
+                S.append(Paragraph(WRAP_EMPTY_HIGHLIGHT, styles["Empty"]))
+            for group, gpts in wrap_point_groups(pts, key):
+                if group:
+                    S.append(Paragraph(xml_escape(group), group_style))
+                S += [point_para(pt, sub_bullet if group else bullet_style) for pt in gpts]
+        if other:
             S.append(Paragraph("Other news", styles["SubSection"]))
-            S += [Paragraph(f"<b>{xml_escape(label)}:</b> {xml_escape(text)}", styles["Body"])
-                  for label, text in sn["other"].items()]
-        S.append(Paragraph(f"Sources ({len(st['stories'])} stories)", styles["SubSection"]))
-        for key in wrap_section_order(st):
-            for s in st["by_section"].get(key, []):
-                tag = s.get("court") or (s.get("department") if key in WRAP_HIGHLIGHT_KEYS else None)
-                S.append(Paragraph(f"[{xml_escape(wrap_section_label(st, key))}{' | ' + xml_escape(tag) if tag else ''}] "
-                                   f"{_pdf_link(s.get('url', ''), s['headline'])}", styles["Item"]))
-                S.append(Paragraph(xml_escape(story_meta(s)), styles["ItemMeta"]))
+            for key, label, pts in other:
+                S.append(Paragraph(xml_escape(label), group_style))
+                S += [point_para(pt, sub_bullet) for pt in pts]
     if n.get("what_to_watch"):
-        S += [Paragraph("What to Watch", styles["Section"]), Paragraph(xml_escape(n["what_to_watch"]), styles["Body"])]
+        S.append(Paragraph("What to Watch", styles["Section"]))
+        S += [Paragraph(xml_escape(w), bullet_style, bulletText="\u2022") for w in n["what_to_watch"]]
     S.append(Paragraph("Sources Checked", styles["Section"]))
     for k, v in wrap["status"].items():
         S.append(Paragraph(f"<b>{xml_escape(k)}:</b> {xml_escape(v)}", styles["ItemMeta"]))
