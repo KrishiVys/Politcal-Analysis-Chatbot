@@ -78,7 +78,7 @@ if _app_password and not st.session_state.get("auth_ok"):
 # updatedcode.py is in the folder (or an old copy is still loaded in a running
 # app), stop with clear instructions instead of failing mid-search.
 if (not hasattr(uc, "resolve_subject") or not hasattr(uc, "build_top_stories") or not hasattr(uc, "gather_daily_wrap")
-        or not hasattr(uc, "clear_wrap_cache")):
+        or not hasattr(uc, "resolve_wrap_party")):
     st.error(
         "**Version mismatch:** this app.py is newer than the updatedcode.py it found at:\n\n"
         f"`{getattr(uc, '__file__', 'unknown location')}`\n\n"
@@ -423,13 +423,23 @@ def render_wrap(wrap: dict, key_prefix: str) -> None:
             sn = uc.wrap_state_narrative(wrap, state)
             st.caption(uc.glance_text(state["glance"]))
             if not state["stories"]:
-                st.info(f"No news found for {state['label']} in this period.")
+                who = f"{state['party']} " if state.get("party") else ""
+                st.info(f"No {who}news found for {state['label']} in this period.")
                 continue
             if sn["overview"]:
                 st.markdown(f"**Overview.** {sn['overview']}")
             if sn["key_highlights"]:
                 st.markdown("#### ✨ Key highlights")
                 st.markdown("\n".join(f"- {h}" for h in sn["key_highlights"]))
+            if state.get("party"):
+                count = len(state["by_section"].get("politics", []))
+                with _card():
+                    st.markdown(f"#### {uc.WRAP_PARTY_POLITICS_ICON} {uc.WRAP_PARTY_POLITICS_LABEL}"
+                                + (f"  ·  {count} stor{'y' if count == 1 else 'ies'}" if count else ""))
+                    if sn["party_politics"]:
+                        st.markdown(sn["party_politics"])
+                    else:
+                        st.caption(uc.WRAP_EMPTY_HIGHLIGHT)
             for key, label, icon in uc.WRAP_HIGHLIGHTS:
                 count = len(state["by_section"].get(key, []))
                 with _card():
@@ -456,12 +466,12 @@ def render_wrap(wrap: dict, key_prefix: str) -> None:
                     for label, text in sn["other"].items():
                         st.markdown(f"**{label}:** {text}")
             with st.expander(f"🔗 Sources ({len(state['stories'])} stories, by section)"):
-                for key in uc.WRAP_SECTION_ORDER:
+                for key in uc.wrap_section_order(state):
                     stories = state["by_section"].get(key, [])
                     if not stories:
                         continue
-                    star = "★ " if key in uc.WRAP_HIGHLIGHT_KEYS else ""
-                    st.markdown(f"**{star}{uc.WRAP_SECTION_LABELS[key]}**")
+                    star = "★ " if uc.wrap_is_starred(state, key) else ""
+                    st.markdown(f"**{star}{uc.wrap_section_label(state, key)}**")
                     for story in stories:
                         tag = story.get("court") or (story.get("department") if key in uc.WRAP_HIGHLIGHT_KEYS else None)
                         head = f"[{story['headline']}]({story['url']})" if story.get("url") else story["headline"]
@@ -579,6 +589,7 @@ def render_assistant_message(msg: dict, key_prefix: str) -> None:
                 st.session_state.force_fresh = True
                 st.session_state.trigger_prompt = wrap.get("_query") or "daily wrap"
                 st.session_state.trigger_wrap_range = (wrap["start_day"], wrap["end_day"])
+                st.session_state.trigger_wrap_party = (wrap.get("party") or {}).get("name", "")
                 st.rerun()
         render_wrap(wrap, key_prefix)
         return
@@ -611,11 +622,14 @@ st.markdown(
 )
 
 for key, default in [("messages", []), ("trigger_prompt", None), ("result_cache", {}),
-                     ("recent_queries", []), ("force_fresh", False), ("trigger_wrap_range", None)]:
+                     ("recent_queries", []), ("force_fresh", False), ("trigger_wrap_range", None),
+                     ("trigger_wrap_party", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
 WRAP_CHOICES = {"Andhra Pradesh & Telangana": "both", "Andhra Pradesh": "andhra pradesh", "Telangana": "telangana"}
+WRAP_PARTY_CHOICES = ["All news", "BRS", "Congress", "BJP", "TDP", "YSRCP", "Jana Sena", "AIMIM", "CPI", "CPI(M)",
+                      "Other party…"]
 
 with st.sidebar:
     st.header("⚙️ Settings")
@@ -625,6 +639,15 @@ with st.sidebar:
                               help="A general round-up of the news -- not about any one politician. Government & "
                                    "cabinet decisions, policy & legislation, ministries & departments, and court "
                                    "rulings are highlighted first, then the rest of the news.")
+    wrap_focus = st.selectbox("Focus", WRAP_PARTY_CHOICES, key="opt_wrap_party",
+                              help="All news, or a wrap-up about one party in these states: news naming the party or "
+                                   "its leaders (and, for the party leading a state's government, that government's "
+                                   "decisions), with party politics highlighted first.")
+    wrap_party = ""
+    if wrap_focus == "Other party…":
+        wrap_party = st.text_input("Party name", key="opt_wrap_party_other", placeholder="e.g. AAP").strip()
+    elif wrap_focus != "All news":
+        wrap_party = wrap_focus
     today_ist = uc.ist_today()
     wrap_period = st.radio("Period", ["Single day", "Date range"], horizontal=True, key="opt_wrap_period")
     if wrap_period == "Single day":
@@ -643,12 +666,14 @@ with st.sidebar:
         wrap_range_error = str(e)
         st.error(wrap_range_error)
     if st.button("🗞️ Generate wrap-up", use_container_width=True, key="wrap_btn", disabled=bool(wrap_range_error)):
-        st.session_state.trigger_prompt = (f"Daily wrap-up: {wrap_label}" if wrap_start == wrap_end else
-                                           f"News wrap-up: {wrap_label}, {uc.wrap_period_text(wrap_start, wrap_end)}")
+        who = f"{wrap_party} " if wrap_party else ""
+        st.session_state.trigger_prompt = (f"{who}Daily wrap-up: {wrap_label}" if wrap_start == wrap_end else
+                                           f"{who}News wrap-up: {wrap_label}, {uc.wrap_period_text(wrap_start, wrap_end)}")
         st.session_state.trigger_wrap_range = (wrap_start, wrap_end)
+        st.session_state.trigger_wrap_party = wrap_party
         st.rerun()
     st.caption("Or type in the chat box: \"daily wrap\", \"daily wrap telangana\", \"yesterday's AP roundup\", "
-               "\"weekly wrap\" or \"wrap-up last 5 days\".")
+               "\"weekly wrap\", \"wrap-up last 5 days\" -- or for a party: \"BRS wrap\", \"TDP weekly wrap-up\".")
 
     st.divider()
     st.subheader("📋 Politician / party report")
@@ -759,7 +784,8 @@ with st.expander("ℹ️ How this works"):
         "4. Use the tabs to see the top stories (the same story from several outlets grouped together, most "
         "widely carried first), the timeline, headlines, and social posts, and download the report as Markdown or PDF.\n"
         "5. For a **news wrap-up of Andhra Pradesh and/or Telangana** -- one day or a date range of up to 31 days -- "
-        "use the wrap-up section at the top of the sidebar, or type \"daily wrap\" / \"weekly wrap\" in the chat box.\n\n"
+        "use the wrap-up section at the top of the sidebar, or type \"daily wrap\" / \"weekly wrap\" in the chat box. "
+        "Set **Focus** to a party (or type e.g. \"BRS wrap\") for a wrap-up about that party in these states.\n\n"
         "Paid sources (Sarvam, Brave, X) use real API quota on every new search. "
         "Use the **Free sources only** preset to avoid that, apart from the Sarvam summary."
     )
@@ -767,18 +793,19 @@ with st.expander("ℹ️ How this works"):
 client = uc.SarvamAI(api_subscription_key=sarvam_key) if (uc.SarvamAI and sarvam_key) else None
 
 
-def run_wrap_turn(query: str, choice: str, start_day, end_day, key_prefix: str) -> None:
+def run_wrap_turn(query: str, choice: str, start_day, end_day, key_prefix: str, party: str = "") -> None:
     """One chat turn for the news wrap-up (one day or a date range): reuse a
     recent identical one if allowed, otherwise gather it, show it, and add it
     to the history."""
     try:
         uc.validate_wrap_range(start_day, end_day)
+        uc.resolve_wrap_party(party)
     except ValueError as e:
         text = f"Can't build that wrap-up: {e}"
         st.error(text)
         st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
         return
-    cache_key = ("wrap", choice, str(start_day), str(end_day))
+    cache_key = ("wrap", choice, str(start_day), str(end_day), (party or "").lower())
     force_fresh = st.session_state.force_fresh
     st.session_state.force_fresh = False
     cached = st.session_state.result_cache.get(cache_key)
@@ -793,7 +820,7 @@ def run_wrap_turn(query: str, choice: str, start_day, end_day, key_prefix: str) 
     log = ProgressLog(placeholder)
     try:
         with contextlib.redirect_stdout(log):
-            wrap = uc.gather_daily_wrap(choice, start_day, client, end_day=end_day, fresh=force_fresh)
+            wrap = uc.gather_daily_wrap(choice, start_day, client, end_day=end_day, fresh=force_fresh, party=party)
         placeholder.empty()
         wrap["_query"] = query
         with st.expander("🛠️ Technical log"):
@@ -817,7 +844,10 @@ if not st.session_state.messages:
     for row_label, examples in [("Politicians", EXAMPLE_POLITICIANS), ("Parties", EXAMPLE_PARTIES),
                                 ("News wrap-up", ["Daily wrap-up: Andhra Pradesh & Telangana",
                                                   "Daily wrap-up: Telangana", "Daily wrap-up: Andhra Pradesh",
-                                                  "Weekly wrap-up: Andhra Pradesh & Telangana"])]:
+                                                  "Weekly wrap-up: Andhra Pradesh & Telangana"]),
+                                ("Party wrap-up", ["BRS news wrap-up: Telangana", "Congress news wrap-up: Telangana",
+                                                   "TDP news wrap-up: Andhra Pradesh",
+                                                   "YSRCP weekly wrap-up: Andhra Pradesh"])]:
         st.caption(row_label)
         cols = st.columns(len(examples))
         for col, example_name in zip(cols, examples):
@@ -856,7 +886,12 @@ if prompt:
             rng = st.session_state.trigger_wrap_range
             st.session_state.trigger_wrap_range = None
             rng = rng or uc.detect_wrap_range(prompt) or (wrap_start, wrap_end)
-            run_wrap_turn(prompt, wrap_choice, rng[0], rng[1], key_prefix)
+            # Party: from a button/"Run fresh" first, then one named in the message, then the sidebar's Focus.
+            party = st.session_state.trigger_wrap_party
+            st.session_state.trigger_wrap_party = None
+            if party is None:
+                party = uc.detect_wrap_party(prompt) or wrap_party
+            run_wrap_turn(prompt, wrap_choice, rng[0], rng[1], key_prefix, party)
         elif date_error:
             text = f"Please fix the date range in the sidebar first: {date_error}"
             st.error(text)
