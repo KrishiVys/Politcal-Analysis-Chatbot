@@ -146,12 +146,13 @@ import re
 import math
 import sys
 import json
+import base64
 import hashlib
 import time
 import argparse
 import textwrap
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape as xml_escape
@@ -3962,37 +3963,177 @@ def build_carousel_candidates(by_cat: dict) -> dict:
     return {"mains": mains, "briefs": rest, "log": log}
 
 
-def fetch_article_text(url: str, max_chars: int = 1500) -> str:
-    """The opening paragraphs of a news article (its <p> text), or "" if it
-    can't be fetched -- Google News redirect links, paywalls and errors all give ""."""
-    if not url or "news.google." in url or BeautifulSoup is None:
-        return ""
+# Fetching a page the way a normal browser visit would. (News sites often refuse
+# requests that announce themselves as a script.) Only publicly readable pages
+# are read -- nothing here gets around paywalls or logins.
+ARTICLE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/124.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-IN,en;q=0.9",
+}
+_GNEWS_RX = re.compile(r"https?://news\.google\.com/(?:rss/)?(?:articles|read)/([A-Za-z0-9_-]+)")
+_GNEWS_CACHE = {}
+
+try:
+    from googlenewsdecoder import gnewsdecoder   # optional: pip install googlenewsdecoder (kept up to date by its authors)
+except Exception:
+    gnewsdecoder = None
+
+
+def _gnews_from_base64(gid: str):
+    """Older Google News article ids carry the publisher URL inside them."""
     try:
-        r = requests.get(url, headers=HEADERS, timeout=8)
-        if r.status_code >= 400:
-            return ""
-        soup = BeautifulSoup(r.text, "html.parser")
-        paras = [" ".join(p.get_text(" ", strip=True).split()) for p in soup.find_all("p")]
-        return " ".join(p for p in paras if len(p) >= 40)[:max_chars]
+        raw = base64.urlsafe_b64decode(gid + "=" * (-len(gid) % 4))
     except Exception:
-        return ""
+        return None
+    m = re.search(rb"https?://[\x21-\x7e]+", raw)
+    if not m:
+        return None
+    url = m.group(0).decode("ascii", "ignore")
+    return url if "news.google." not in url else None
 
 
-def attach_article_text(stories: list, workers: int = 6) -> int:
-    """Fetch an excerpt for each story from its best direct link, in parallel. Returns how many succeeded."""
+def _gnews_from_batchexecute(gid: str):
+    """Newer ids: ask Google News for the target URL the way its own web page does
+    (read the article page's signature and timestamp, then call its decoding endpoint)."""
+    if BeautifulSoup is None:
+        return None
+    r = requests.get(f"https://news.google.com/rss/articles/{gid}", headers=ARTICLE_HEADERS, timeout=10)
+    soup = BeautifulSoup(r.text, "html.parser")
+    node = soup.find(attrs={"data-n-a-sg": True, "data-n-a-ts": True})
+    if not node:
+        return None
+    sig, ts = node.get("data-n-a-sg"), node.get("data-n-a-ts")
+    inner = ('["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],'
+             f'"X","X",1,[1,1,1],1,1,null,0,0,null,0],"{gid}",{ts},"{sig}"]')
+    body = "f.req=" + quote(json.dumps([[["Fbv4je", inner, None, "generic"]]]))
+    r2 = requests.post("https://news.google.com/_/DotsSplashUi/data/batchexecute", data=body, timeout=10,
+                       headers={**ARTICLE_HEADERS, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"})
+    chunk = r2.text.split("\n\n", 1)[1]
+    parsed = json.loads(chunk)[:-2]
+    url = json.loads(parsed[0][2])[1]
+    return url if isinstance(url, str) and url.startswith("http") else None
+
+
+def resolve_google_news_url(url: str):
+    """The publisher's own article URL for a Google News redirect link (or the
+    URL unchanged if it isn't one); None if it can't be resolved. Google changes
+    this format from time to time -- installing googlenewsdecoder keeps it working."""
+    m = _GNEWS_RX.match(url or "")
+    if not m:
+        return url
+    gid = m.group(1)
+    if gid in _GNEWS_CACHE:
+        return _GNEWS_CACHE[gid]
+    found = None
+    if gnewsdecoder is not None:
+        try:
+            res = gnewsdecoder(url)
+            if isinstance(res, dict) and res.get("status") and res.get("decoded_url"):
+                found = res["decoded_url"]
+        except Exception:
+            found = None
+    found = found or _gnews_from_base64(gid)
+    if not found:
+        try:
+            found = _gnews_from_batchexecute(gid)
+        except Exception:
+            found = None
+    _GNEWS_CACHE[gid] = found
+    return found
+
+
+def _article_text_from_html(html: str, max_chars: int) -> str:
+    """Article text from a page: structured data (JSON-LD articleBody), then the
+    page's paragraphs, plus its summary metadata (og/meta description) -- which
+    almost every news page has, even when the body is loaded by JavaScript."""
+    soup = BeautifulSoup(html, "html.parser")
+    desc = ""
+    for attrs in ({"property": "og:description"}, {"name": "description"}, {"name": "twitter:description"}):
+        tag = soup.find("meta", attrs=attrs)
+        if tag and tag.get("content"):
+            desc = " ".join(tag["content"].split())
+            break
+    body = ""
+    for tag in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(tag.string or "")
+        except Exception:
+            continue
+        for obj in (data if isinstance(data, list) else data.get("@graph", [data]) if isinstance(data, dict) else []):
+            if isinstance(obj, dict) and isinstance(obj.get("articleBody"), str) and len(obj["articleBody"]) > 200:
+                body = " ".join(obj["articleBody"].split())
+                break
+        if body:
+            break
+    if not body:
+        paras = [" ".join(p.get_text(" ", strip=True).split()) for p in soup.find_all("p")]
+        body = " ".join(p for p in paras if len(p) >= 40)
+    text = (desc + " " + body).strip() if desc and desc[:60] not in body else (body or desc)
+    return text[:max_chars]
+
+
+def fetch_article_text(url: str, max_chars: int = 1500) -> tuple:
+    """(text, problem): the opening of a news article, or ("", why it failed).
+    Google News redirect links are first resolved to the publisher's page."""
+    if BeautifulSoup is None:
+        return "", "beautifulsoup4 isn't installed"
+    if not url:
+        return "", "no link available"
+    target = resolve_google_news_url(url)
+    if not target:
+        return "", "the Google News link could not be resolved to the publisher's page"
+    try:
+        r = requests.get(target, headers=ARTICLE_HEADERS, timeout=10)
+    except Exception as e:
+        return "", f"the publisher's site could not be reached ({_short_error(e)})"
+    if r.status_code in (401, 402, 403, 429, 451):
+        return "", f"the publisher's site refused automated access (HTTP {r.status_code})"
+    if r.status_code >= 400:
+        return "", f"the page returned HTTP {r.status_code}"
+    try:
+        text = _article_text_from_html(r.text or "", max_chars)
+    except Exception:
+        text = ""
+    return (text, "") if text else ("", "the page had no readable article text (it may be paywalled or load by script)")
+
+
+CAROUSEL_THIN_TEXT = 300   # fewer characters than this = only a short description was available
+
+
+def attach_article_text(stories: list, workers: int = 6, tries: int = 2) -> dict:
+    """For each story, fetch an excerpt from up to `tries` of its links (direct
+    publisher links first, then resolved Google News links), in parallel across
+    stories. A resolved Google News link replaces the redirect link in the
+    story's sources, so the editor gets the publisher's own URL. Returns counts."""
     from concurrent.futures import ThreadPoolExecutor
-    targets = []
-    for s in stories:
-        link = next((r for r in s["links"] if r["direct"]), None)
-        s["excerpt"], s["excerpt_source"] = "", ""
-        if link:
-            targets.append((s, link))
+
+    def one(s):
+        s["excerpt"], s["excerpt_source"], s["excerpt_note"] = "", "", ""
+        problems = []
+        for rec in sorted(s["links"], key=lambda r: not r["direct"])[:tries]:
+            text, problem = fetch_article_text(rec["url"])
+            if not rec["direct"]:
+                resolved = _GNEWS_CACHE.get((_GNEWS_RX.match(rec["url"]) or [None, None])[1])
+                if resolved:
+                    rec["url"], rec["direct"] = resolved, True
+            if text:
+                s["excerpt"], s["excerpt_source"] = text, rec["name"]
+                return "ok"
+            problems.append(problem)
+        s["excerpt_note"] = problems[0] if problems else "no link available"
+        return s["excerpt_note"]
+
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        texts = list(ex.map(lambda t: fetch_article_text(t[1]["url"]), targets))
-    for (s, link), text in zip(targets, texts):
-        if text:
-            s["excerpt"], s["excerpt_source"] = text, link["name"]
-    return sum(1 for t in texts if t)
+        results = list(ex.map(one, stories))
+    counts = {"fetched": results.count("ok"), "total": len(stories)}
+    for r in results:
+        if r != "ok":
+            key = ("unresolved" if "Google News" in r else "blocked" if "refused" in r or "reached" in r
+                   else "unreadable" if "readable" in r or "HTTP" in r else "other")
+            counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def _story_material(s: dict) -> str:
@@ -4154,7 +4295,10 @@ def _carousel_card(s: dict, ai: dict, day, all_names=None) -> dict:
         flags.append("Figures not found in the source material: " + ", ".join(unsupported)
                      + " -- check against the original before use")
     if not s.get("excerpt"):
-        flags.append("Only headlines were available (article text could not be fetched) -- read the source before use")
+        why = s.get("excerpt_note") or "article text could not be fetched"
+        flags.append(f"Only headlines were available ({why}) -- read the source before use")
+    elif len(s["excerpt"]) < CAROUSEL_THIN_TEXT:
+        flags.append("Only the article's short description was available -- read the source before use")
     n, est = len(s["outlets"]), s["n_established"]
     if est == 0:
         level = f"UNVERIFIED -- flagged for editorial review (reported by {n} outlet(s), none established)"
@@ -4315,7 +4459,13 @@ def gather_daily_carousel(day=None, state_choice: str = "both", client=None, mod
                            "cross-category duplicates dropped")
     print(f"  - Fetching article text for {len(cands['mains'])} shortlisted stories...")
     got = attach_article_text(cands["mains"])
-    status["Article text"] = f"fetched for {got} of {len(cands['mains'])} shortlisted stories"
+    why = ", ".join(f"{n} {label}" for key, label in (("unresolved", "Google News links not resolvable"),
+                                                     ("blocked", "sites refused or unreachable"),
+                                                     ("unreadable", "pages without readable text"),
+                                                     ("other", "other")) if (n := got.get(key)))
+    status["Article text"] = (f"fetched for {got['fetched']} of {got['total']} shortlisted stories"
+                              + (f" (missing: {why})" if why else "")
+                              + ("" if gnewsdecoder else "; tip: pip install googlenewsdecoder resolves more Google News links"))
     raw, used_template = None, True
     if client is not None and cands["mains"]:
         print("  - Asking Sarvam AI to draft the carousel...")
