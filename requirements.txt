@@ -6,3 +6,7 @@ sarvamai
 reportlab>=4.0
 python-dotenv>=1.0
 pandas>=2.0
+
+# Optional but recommended for the daily carousel: turns Google News links into the publishers'
+# own article URLs, so article text can be read. Remove the "# " below to install it.
+# googlenewsdecoder
