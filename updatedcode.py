@@ -99,6 +99,7 @@ USAGE
     python updatedcode.py --wrap ap --date 2026-10-09 --pdf
     python updatedcode.py --wrap --from-date 2026-10-01 --to-date 2026-10-07 --save   # a date range (max 31 days)
     python updatedcode.py --wrap telangana --wrap-party BRS               # one party's news in AP/Telangana
+    python updatedcode.py --carousel --save --pdf                         # DRAFT 8-slide daily news carousel
     (In interactive mode, typing "daily wrap", "today's news telangana",
      "AP roundup", "weekly wrap" or "telangana wrap last 5 days" does the same.)
 
@@ -3752,6 +3753,784 @@ def save_wrap_pdf(wrap: dict) -> str:
 
 
 # --------------------------------------------------------------------------
+# Daily news carousel (editorial DRAFT)
+# --------------------------------------------------------------------------
+# An eight-slide daily news carousel for a digital briefing, following the
+# editorial instructions: national/state, world, business, tech/science/health/
+# environment/sports and public-interest news; prioritised by significance;
+# every story with source URLs and a verification status; no event repeated
+# across slides; nothing invented; and DRAFT ONLY -- nothing here is published
+# or represented as verified until an editor has checked and approved it.
+#
+# The sources (Google News, GDELT) give only headlines, outlets, links and
+# dates, so the text of each shortlisted article is fetched from its direct
+# link and given to the AI as its ONLY material; figures the AI writes that
+# aren't in that material are flagged for the editor.
+
+CAROUSEL_CATEGORIES = [
+    # key, label, Google News query, GDELT query
+    ("national", "National politics",
+     '"India" (government OR parliament OR minister OR "Supreme Court" OR election OR Centre)',
+     '(parliament OR "Supreme Court" OR minister OR election) sourcecountry:IN'),
+    ("world", "World affairs",
+     '("United Nations" OR summit OR war OR ceasefire OR "White House" OR Kremlin OR Beijing OR "European Union")',
+     '("United Nations" OR summit OR ceasefire OR "White House" OR Kremlin)'),
+    ("business", "Business & economy",
+     '(Sensex OR Nifty OR RBI OR economy OR inflation OR GDP OR rupee OR "stock market" OR earnings)',
+     '(Sensex OR Nifty OR RBI OR inflation OR GDP OR rupee) sourcecountry:IN'),
+    ("tech", "Technology, AI & science",
+     '("artificial intelligence" OR technology OR ISRO OR science OR startup OR semiconductor)',
+     '("artificial intelligence" OR ISRO OR semiconductor OR startup) sourcecountry:IN'),
+    ("health_edu", "Health & education",
+     '(health OR hospital OR disease OR vaccine OR education OR exam OR university OR students)',
+     '(hospital OR vaccine OR disease OR university OR exam) sourcecountry:IN'),
+    ("environment", "Environment & climate",
+     '(climate OR environment OR pollution OR cyclone OR flood OR heatwave OR wildlife OR monsoon)',
+     '(climate OR pollution OR cyclone OR flood OR heatwave) sourcecountry:IN'),
+    ("sports", "Sports",
+     '(cricket OR football OR hockey OR Olympics OR "Team India" OR tennis OR badminton OR chess)',
+     '(cricket OR football OR hockey OR Olympics OR badminton) sourcecountry:IN'),
+]
+CAROUSEL_STATE_LABEL = "State developments"
+CAROUSEL_CATEGORY_ORDER = ["national", "state", "world", "business", "tech", "health_edu", "environment", "sports"]
+CAROUSEL_CATEGORY_LABELS = {k: l for k, l, _, _ in CAROUSEL_CATEGORIES}
+CAROUSEL_CATEGORY_LABELS["state"] = CAROUSEL_STATE_LABEL
+
+CAROUSEL_SLIDES = [
+    {"n": 1, "key": "cover", "title": "Cover and date"},
+    {"n": 2, "key": "top", "title": "Top story", "max": 1},
+    {"n": 3, "key": "national_state", "title": "National and state developments", "cats": ["national", "state"], "max": 3},
+    {"n": 4, "key": "world", "title": "World affairs", "cats": ["world"], "max": 3},
+    {"n": 5, "key": "business", "title": "Business and economy", "cats": ["business"], "max": 3},
+    {"n": 6, "key": "more", "title": "Technology, science, health, environment and sports",
+     "cats": ["tech", "health_edu", "environment", "sports"], "max": 3},
+    {"n": 7, "key": "briefs", "title": "Additional headlines in brief", "max": 5},
+    {"n": 8, "key": "takeaway", "title": "Daily takeaway and follow prompt"},
+]
+CAROUSEL_CANDIDATES_PER_CATEGORY = 4
+CAROUSEL_BRIEF_POOL = 8
+CAROUSEL_SUMMARY_WORDS = (40, 70)
+CAROUSEL_HEADLINE_MAX_WORDS = 12
+CAROUSEL_DRAFT_NOTICE = ("DRAFT -- NOT FOR PUBLICATION. Nothing in this carousel has been verified or approved. Every "
+                         "story must pass editorial checks and human approval before it is published or scheduled.")
+CAROUSEL_VISUAL_RULES = ("Use only an image you are licensed to use: an agency/wire subscription photo, an official "
+                         "handout, or your own graphic. Credit the rights holder exactly as the licence requires. Do "
+                         "not copy photos from the linked articles. Image credit: to be completed by the editor.")
+CAROUSEL_CHECKLIST = [
+    "Each story's event date confirmed (not just the publication date)",
+    "Every single-source, developing, disputed or flagged story verified independently, or removed",
+    "Every figure flagged as 'not found in the source material' checked against the original source",
+    "Allegations attributed to whoever made them; facts separated from analysis",
+    "No underlying event repeated across slides",
+    "Every image licensed, and credited as the licence requires",
+    "Caption, hook and hashtags checked for accuracy and neutrality",
+    "Final approval by: ____________________   Date/time: ____________",
+]
+
+# Established news organisations (and primary sources) -- recognised by name or web domain.
+_CAROUSEL_PRIMARY = _rx([r"pib\b", r"press information bureau", r"[a-z0-9-]+\.gov\.in", r"[a-z0-9-]+\.nic\.in",
+                         r"rbi\.org\.in", r"un\.org", r"who\.int", r"[a-z0-9-]+\.gov\b"])
+_CAROUSEL_ESTABLISHED = _rx([
+    r"the hindu\b", r"thehindu", r"indian express", r"indianexpress", r"new indian express", r"newindianexpress",
+    r"hindustan times", r"hindustantimes", r"times of india", r"timesofindia", r"ndtv", r"pti\b", r"press trust",
+    r"reuters", r"associated press", r"apnews", r"bbc\b", r"livemint", r"mint\b", r"economic times", r"economictimes",
+    r"business standard", r"business-standard", r"financial express", r"financialexpress", r"deccan herald",
+    r"deccanherald", r"deccan chronicle", r"deccanchronicle", r"theprint", r"the print\b", r"scroll\b", r"india today",
+    r"indiatoday", r"telangana today", r"telanganatoday", r"hans india", r"thehansindia", r"moneycontrol",
+    r"al jazeera", r"aljazeera", r"the guardian", r"theguardian", r"bloomberg", r"cnbc", r"espncricinfo",
+    r"sportstar", r"news minute", r"thenewsminute", r"frontline", r"the wire\b", r"thewire", r"dd news", r"ddnews",
+    r"firstpost", r"wion", r"ani\b", r"the federal\b", r"thefederal", r"sakshi", r"eenadu", r"the tribune",
+    r"tribuneindia", r"telegraph india", r"telegraphindia", r"outlook india", r"outlookindia", r"down to earth",
+    r"downtoearth", r"the quint", r"thequint",
+])
+CAROUSEL_HASHTAG_ALLOW = {"news", "india", "dailynews", "dailybriefing", "newsupdate", "newsroundup", "telangana",
+                          "andhrapradesh", "hyderabad", "world", "worldnews", "business", "economy", "technology",
+                          "tech", "ai", "science", "health", "education", "climate", "environment", "sports",
+                          "cricket", "politics"}
+
+
+def outlet_kind(name: str) -> str:
+    """'primary' (government/official source), 'established' (recognised news organisation) or 'other'."""
+    n = (name or "").lower()
+    if _CAROUSEL_PRIMARY.search(n):
+        return "primary"
+    return "established" if _CAROUSEL_ESTABLISHED.search(n) else "other"
+
+
+def _carousel_state_queries(state_keys: list) -> list:
+    out = []
+    for sk in state_keys:
+        terms = WRAP_STATES[sk]["query_sets"][0]
+        out.append((sk, WRAP_STATES[sk]["label"], build_news_query(terms), build_news_query(terms, india_only=True)))
+    return out
+
+
+def gather_carousel_news(day, state_keys: list) -> tuple:
+    """({category: [articles]}, status) for one IST calendar day: one Google News
+    search and one GDELT search per category (GDELT spaced out), plus the chosen
+    states for 'state developments'."""
+    start, end = ist_day_window(day)
+    window = f"after:{(day - timedelta(days=1)):%Y-%m-%d} before:{(day + timedelta(days=1)):%Y-%m-%d}"
+    jobs = [(k, l, gq, dq, None) for k, l, gq, dq in CAROUSEL_CATEGORIES]
+    jobs += [("state", label, gq, dq, label) for _sk, label, gq, dq in _carousel_state_queries(state_keys)]
+    by_cat, status = {}, {}
+    for key, label, gq, dq, state_label in jobs:
+        got, fails = [], []
+        try:
+            got += get_google_news_fallback(f"{gq} {window}", 100, start, end)
+        except Exception as e:
+            fails.append(f"Google News ({_short_error(e)})")
+        try:
+            got += _gdelt_throttled(dq, 75, start, end)
+        except Exception as e:
+            fails.append(f"GDELT ({_short_error(e)})")
+        got = _dedupe_articles(_filter_by_date(got, start, end))
+        for a in got:
+            a["category"] = key
+            if state_label:
+                a["state"] = state_label
+        by_cat.setdefault(key, []).extend(got)
+        status[f"{label} news"] = f"{len(got)} articles" + ("; failed: " + "; ".join(fails) if fails else "")
+        time.sleep(0.5)
+    return by_cat, status
+
+
+def _story_link_records(story: dict) -> list:
+    """Every outlet's article for a story, one per outlet: primary sources first,
+    then established outlets, direct publisher links before Google News links."""
+    recs, seen = [], set()
+    for it in story.get("items") or []:
+        k = _outlet_key(it.get("source", ""))
+        if not k or k in seen or not it.get("url"):
+            continue
+        seen.add(k)
+        recs.append({"name": it["source"], "url": it["url"], "kind": outlet_kind(it["source"]),
+                     "direct": "news.google." not in it["url"]})
+    order = {"primary": 0, "established": 1, "other": 2}
+    return sorted(recs, key=lambda r: (order[r["kind"]], not r["direct"]))
+
+
+def _same_event(a: dict, b: dict) -> bool:
+    if {it.get("url") for it in a.get("items", []) if it.get("url")} & {it.get("url") for it in b.get("items", []) if it.get("url")}:
+        return True
+    wa, wb = _story_words(a["headline"], set()), _story_words(b["headline"], set())
+    if not wa or not wb:
+        return False
+    shared = wa & wb
+    return len(shared) >= 3 and len(shared) / min(len(wa), len(wb)) >= 0.6
+
+
+def build_carousel_candidates(by_cat: dict) -> dict:
+    """Group each category's articles into stories, drop the same event turning
+    up in two categories, and sort stories into: shortlisted main candidates (top
+    few per category), a pool for 'headlines in brief', and the excluded (only
+    one source, and not an established one -- can't be adequately verified)."""
+    pool, log = [], []
+    for cat in CAROUSEL_CATEGORY_ORDER:
+        stories = build_top_stories({"headlines": by_cat.get(cat, []), "social_news": []}, max_stories=40, window_days=1)
+        for s in stories:
+            s["category"] = cat
+            states = {it.get("state") for it in s["items"] if it.get("state")}
+            s["state"] = ", ".join(sorted(states)) if states else ""
+            s["links"] = _story_link_records(s)
+            s["n_established"] = sum(1 for r in s["links"] if r["kind"] in ("established", "primary"))
+            s["primary"] = any(r["kind"] == "primary" for r in s["links"])
+            dup = next((p for p in pool if _same_event(p, s)), None)
+            if dup:
+                log.append({"story": s, "outcome": f"Dropped -- same event as a {CAROUSEL_CATEGORY_LABELS[dup['category']]} "
+                                                    f"story (\"{dup['headline'][:60]}\")"})
+                continue
+            pool.append(s)
+    rank = lambda s: (s["n_established"] > 0, len(s["outlets"]), s["primary"],
+                      s["last_seen"].timestamp() if s.get("last_seen") else 0)
+    eligible, excluded = [], []
+    for s in pool:
+        if s["n_established"] == 0 and len(s["outlets"]) < 2:
+            excluded.append(s)
+            log.append({"story": s, "outcome": "Excluded -- one source, not an established outlet: cannot be "
+                                               "adequately verified (flag for editorial review if important)"})
+        else:
+            eligible.append(s)
+    mains = []
+    for cat in CAROUSEL_CATEGORY_ORDER:
+        mains += sorted((s for s in eligible if s["category"] == cat), key=rank, reverse=True)[:CAROUSEL_CANDIDATES_PER_CATEGORY]
+    rest = sorted((s for s in eligible if s not in mains), key=rank, reverse=True)[:CAROUSEL_BRIEF_POOL]
+    for i, s in enumerate(mains, 1):
+        s["cid"] = f"C{i}"
+    for i, s in enumerate(rest, 1):
+        s["cid"] = f"B{i}"
+    return {"mains": mains, "briefs": rest, "log": log}
+
+
+def fetch_article_text(url: str, max_chars: int = 1500) -> str:
+    """The opening paragraphs of a news article (its <p> text), or "" if it
+    can't be fetched -- Google News redirect links, paywalls and errors all give ""."""
+    if not url or "news.google." in url or BeautifulSoup is None:
+        return ""
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=8)
+        if r.status_code >= 400:
+            return ""
+        soup = BeautifulSoup(r.text, "html.parser")
+        paras = [" ".join(p.get_text(" ", strip=True).split()) for p in soup.find_all("p")]
+        return " ".join(p for p in paras if len(p) >= 40)[:max_chars]
+    except Exception:
+        return ""
+
+
+def attach_article_text(stories: list, workers: int = 6) -> int:
+    """Fetch an excerpt for each story from its best direct link, in parallel. Returns how many succeeded."""
+    from concurrent.futures import ThreadPoolExecutor
+    targets = []
+    for s in stories:
+        link = next((r for r in s["links"] if r["direct"]), None)
+        s["excerpt"], s["excerpt_source"] = "", ""
+        if link:
+            targets.append((s, link))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        texts = list(ex.map(lambda t: fetch_article_text(t[1]["url"]), targets))
+    for (s, link), text in zip(targets, texts):
+        if text:
+            s["excerpt"], s["excerpt_source"] = text, link["name"]
+    return sum(1 for t in texts if t)
+
+
+def _story_material(s: dict) -> str:
+    return " ".join([it["headline"] for it in s.get("items", [])] + [s.get("excerpt", "")])
+
+
+def _first_published(s: dict) -> str:
+    dts = [it["dt"] for it in s.get("items", []) if it.get("dt")]
+    return f"{_ist(min(dts)):%d %b %Y, %H:%M} IST" if dts else "unknown"
+
+
+def _carousel_system_prompt(day) -> str:
+    lo, hi = CAROUSEL_SUMMARY_WORDS
+    return (
+        "You are the editorial assistant for a daily digital news briefing, writing a DRAFT eight-slide carousel for "
+        f"{day:%A, %d %B %Y} (India) that a human editor will check and approve. Nothing you write is published, "
+        "scheduled or treated as verified until the editor approves it.\n"
+        "You are given candidate stories, each with an id ([C3] for main candidates, [B2] for brief candidates), its "
+        "category, how many separate outlets reported it and how many of those are established outlets, when it was "
+        "first published (IST), every outlet's headline, and -- where available -- an excerpt of the article text. "
+        "THAT MATERIAL IS ALL YOU KNOW.\n"
+        "SELECTION\n"
+        "- Prioritise by public significance, impact, novelty and relevance to Indian readers. Prefer stories carried "
+        "by several outlets, including established ones.\n"
+        "- top_story: the single most significant main candidate.\n"
+        "- slides: for each of national_state, world, business and more, choose 0-3 main candidates FROM THAT SLIDE'S "
+        "categories (national_state: National politics, State developments; world: World affairs; business: Business "
+        "& economy; more: Technology/AI/science, Health & education, Environment & climate, Sports). Adapt to the "
+        "day's news: choose fewer, or none, rather than include something trivial. NEVER manufacture a story to fill "
+        "a slide.\n"
+        "- briefs: 0-5 brief candidates worth a one-line mention.\n"
+        "- NEVER use the same underlying event twice anywhere -- top story, slides or briefs.\n"
+        "WRITING (for every story you use)\n"
+        f"- headline: concise and accurate, at most {CAROUSEL_HEADLINE_MAX_WORDS} words; no sensationalism, clickbait "
+        "or question headlines.\n"
+        f"- summary: {lo}-{hi} words, from the material only. If the material is too thin for {lo} words, write fewer "
+        "-- never pad with details that are not there.\n"
+        "- key_facts: 2-4 short facts stated in the material.\n"
+        "- context: one sentence of background ONLY if the material supports it, otherwise \"\".\n"
+        "- status: \"established\" (reported as fact by several outlets), \"developing\" (still unfolding; details may "
+        "change), \"disputed\" (accounts conflict) or \"allegation\" (a claim by one party). Attribute allegations and "
+        "claims to whoever made them; separate facts from analysis.\n"
+        "- event_date: the date the event happened ONLY if the material states it explicitly; otherwise \"\". Never "
+        "assume it is the publication date.\n"
+        "- visual: describe a suitable image or graphic (e.g. \"map of the affected districts\", \"official handout "
+        "photo of the cabinet meeting\"). Never name a photographer, agency or credit.\n"
+        "- Never invent facts, quotes, statistics, sources or image credits. No partisan framing, no predictions.\n"
+        "POST COPY\n"
+        "- hook: an accurate opening line under 15 words; not sensational.\n"
+        "- caption: a platform-appropriate caption of 60-120 words describing the roundup neutrally.\n"
+        "- hashtags: 4-8 relevant, non-misleading hashtags.\n"
+        "- takeaway: 1-2 sentences tying the day together WITHOUT new facts or predictions.\n"
+        "- follow_prompt: a short, non-pushy line inviting readers to follow for tomorrow's roundup.\n"
+        "- alt_text: accessibility text for each slide, keyed \"1\" to \"8\", describing what the slide shows.\n"
+        "Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
+        '{"top_story": "C1", "slides": {"national_state": [], "world": [], "business": [], "more": []}, "briefs": [], '
+        '"stories": {"C1": {"headline": "...", "summary": "...", "key_facts": ["..."], "context": "", "status": '
+        '"established", "event_date": "", "visual": "..."}, "B1": {"headline": "...", "status": "established"}}, '
+        '"hook": "...", "caption": "...", "hashtags": ["#..."], "takeaway": "...", "follow_prompt": "...", '
+        '"alt_text": {"1": "..."}}'
+    )
+
+
+def _carousel_user_prompt(day, cands: dict) -> str:
+    def block(s, full):
+        heads = "; ".join(f'"{it["headline"]}" ({it.get("source", "")})' for it in s["items"][:4])
+        line = (f"[{s['cid']}] category: {CAROUSEL_CATEGORY_LABELS[s['category']]}"
+                + (f" ({s['state']})" if s.get("state") else "")
+                + f" | {len(s['outlets'])} outlet(s), {s['n_established']} established"
+                + (", incl. a primary/official source" if s["primary"] else "")
+                + f" | first published {_first_published(s)}\n   headlines: {heads}")
+        if full and s.get("excerpt"):
+            line += f"\n   excerpt ({s['excerpt_source']}): \"{s['excerpt'][:900]}\""
+        return line
+    L = [f"DATE: {day:%A, %d %B %Y} (India)", "", "MAIN CANDIDATES"]
+    L += [block(s, True) for s in cands["mains"]] or ["(none)"]
+    L += ["", "BRIEF CANDIDATES"] + ([block(s, False) for s in cands["briefs"]] or ["(none)"])
+    L += ["", "Write the JSON carousel now, based only on the above."]
+    return "\n".join(L)
+
+
+def generate_carousel_raw(client, model, day, cands: dict) -> dict:
+    messages = [{"role": "system", "content": _carousel_system_prompt(day)},
+                {"role": "user", "content": _carousel_user_prompt(day, cands)}]
+    last_error = "no response"
+    for attempt in range(2):
+        response = _call_sarvam(client, model, messages)
+        message = response.choices[0].message
+        content = getattr(message, "content", None) or getattr(message, "reasoning_content", None)
+        if content:
+            content = re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.MULTILINE).strip()
+            parsed = extract_json_object(content)
+            if parsed and isinstance(parsed.get("stories"), dict):
+                return parsed
+            last_error = "response did not contain the expected JSON"
+        else:
+            last_error = "empty response"
+        if attempt == 0:
+            messages = messages[:2] + [{"role": "user", "content":
+                f"Your previous reply was unusable ({last_error}). Reply again with ONLY the JSON object."}]
+    raise ValueError(last_error)
+
+
+def _template_carousel_raw(cands: dict) -> dict:
+    """Without the AI: the strongest candidates, with their own headlines, and
+    every piece of writing left for the editor (and flagged)."""
+    mains = cands["mains"]
+    rank = lambda s: (s["n_established"] > 0, len(s["outlets"]))
+    top = max(mains, key=rank, default=None)
+    slides = {}
+    for sl in CAROUSEL_SLIDES:
+        if sl.get("cats"):
+            slides[sl["key"]] = [s["cid"] for s in sorted((s for s in mains if s["category"] in sl["cats"] and s is not top),
+                                                          key=rank, reverse=True)[:2]]
+    return {"top_story": top["cid"] if top else "", "slides": slides,
+            "briefs": [s["cid"] for s in cands["briefs"][:5]], "stories": {}, "hook": "", "caption": "",
+            "hashtags": [], "takeaway": "", "follow_prompt": "", "alt_text": {}}
+
+
+_CREDIT_RX = re.compile(r"(?i)\b(photo|image|picture|courtesy|credit)s?\s*(credit)?\s*[:\-]\s*[^,.;]+")
+
+
+def _scrub_visual(text: str) -> str:
+    """Keep the visual idea, drop any credit the AI invented: "Photo: Reuters/John Doe, crowd outside parliament"
+    -> "crowd outside parliament (credit to be confirmed by the editor)"."""
+    t = " ".join(str(text or "").split())
+    if not _CREDIT_RX.search(t):
+        return t
+    t = _CREDIT_RX.sub("", t).strip(" ,;:-")
+    return (t or "Image") + " (credit to be confirmed by the editor)"
+
+
+def _numbers(text: str) -> set:
+    return {n.replace(",", "").rstrip(".") for n in re.findall(r"\d[\d,]*(?:\.\d+)?", text or "")}
+
+
+def _carousel_card(s: dict, ai: dict, day, all_names=None) -> dict:
+    ai = ai if isinstance(ai, dict) else {}
+    lo, hi = CAROUSEL_SUMMARY_WORDS
+    # Any outlet in the shortlist counts as a citation to strip -- including one wrongly attributed to this story.
+    names = sorted(set(all_names or []) | {r["name"] for r in s["links"]})
+    headline = _clean_point(ai.get("headline"), names).rstrip(".") or _clean_headline(s["headline"], "").rstrip(".")
+    summary = _clean_point(ai.get("summary"), names) if ai.get("summary") else ""
+    facts = [_clean_point(f, names) for f in (ai.get("key_facts") or []) if str(f).strip()][:4] if isinstance(ai.get("key_facts"), list) else []
+    if not facts:   # without the AI: what each outlet's headline says -- attributed, not restated as fact
+        facts = [f'{it.get("source", "")}: "{it["headline"]}"' for it in s["items"][:3]]
+    context = _clean_point(ai.get("context"), names) if ai.get("context") else ""
+    flags = []
+    words = len(summary.split())
+    if not summary:
+        flags.append(f"Summary missing -- editor to write {lo}-{hi} words from the linked sources")
+    elif not lo <= words <= hi:
+        flags.append(f"Summary is {words} words (target {lo}-{hi}) -- edit")
+    if len(headline.split()) > CAROUSEL_HEADLINE_MAX_WORDS:
+        flags.append(f"Headline is {len(headline.split())} words (max {CAROUSEL_HEADLINE_MAX_WORDS}) -- shorten")
+    allowed = _numbers(_story_material(s)) | {str(day.day), str(day.year), f"{day.day:02d}"}
+    unsupported = sorted(_numbers(" ".join([headline, summary, context] + facts)) - allowed)
+    if unsupported:
+        flags.append("Figures not found in the source material: " + ", ".join(unsupported)
+                     + " -- check against the original before use")
+    if not s.get("excerpt"):
+        flags.append("Only headlines were available (article text could not be fetched) -- read the source before use")
+    n, est = len(s["outlets"]), s["n_established"]
+    if est == 0:
+        level = f"UNVERIFIED -- flagged for editorial review (reported by {n} outlet(s), none established)"
+    elif n >= 2:
+        level = f"Corroborated by {n} outlets ({est} established) -- pending editorial check"
+    else:
+        level = f"Single source ({s['outlets'][0]}) -- verify independently before publishing"
+    st_ = str(ai.get("status") or "").lower()
+    heads = " ".join(it["headline"].lower() for it in s["items"])
+    if st_ == "developing" or re.search(r"\b(live|updates|breaking|developing)\b", heads):
+        level += "; DEVELOPING -- details may change"
+    if st_ == "disputed":
+        level += "; DISPUTED -- accounts differ, present both"
+    if st_ == "allegation":
+        level += "; ALLEGATION -- attribute to whoever made it; not established"
+    visual = _scrub_visual(ai.get("visual"))
+    return {"cid": s["cid"], "category": CAROUSEL_CATEGORY_LABELS[s["category"]] + (f" ({s['state']})" if s.get("state") else ""),
+            "headline": headline, "summary": summary, "summary_words": words, "key_facts": facts, "context": context,
+            "event_date": str(ai.get("event_date") or "").strip() or "Not stated in the sources -- confirm",
+            "published": _first_published(s), "sources": s["links"], "verification": level, "flags": flags,
+            "visual": visual or "Your own text card or graphic (no photo needed)", "visual_rules": CAROUSEL_VISUAL_RULES}
+
+
+def _clean_hashtags(tags, text_blob: str) -> list:
+    blob = re.sub(r"[^a-z0-9]", "", text_blob.lower())
+    out = []
+    for t in tags if isinstance(tags, list) else []:
+        t = "#" + re.sub(r"[^A-Za-z0-9_]", "", str(t).lstrip("#"))
+        word = t[1:].lower()
+        if 2 <= len(word) <= 30 and t not in out and (word in CAROUSEL_HASHTAG_ALLOW or word in blob):
+            out.append(t)
+    return out[:8]
+
+
+def assemble_carousel(raw: dict, cands: dict, day, used_template: bool, status: dict) -> dict:
+    """Validate the AI's choices and build the carousel: unknown ids, a story
+    used twice, the same event under two ids, or a story on the wrong slide
+    are all removed (and noted for the editor)."""
+    by_id = {s["cid"]: s for s in cands["mains"] + cands["briefs"]}
+    all_names = sorted({r["name"] for s in by_id.values() for r in s["links"]})
+    stories_ai = raw.get("stories") if isinstance(raw.get("stories"), dict) else {}
+    used, notes = {}, []
+
+    def take(cid, slide_n, cats=None, mains_only=True):
+        s = by_id.get(str(cid))
+        if not s:
+            notes.append(f"Slide {slide_n}: the AI chose '{cid}', which is not a candidate -- ignored")
+            return None
+        if mains_only and not s["cid"].startswith("C"):
+            notes.append(f"Slide {slide_n}: {cid} is a brief candidate -- not used as a full story")
+            return None
+        if s["cid"] in used:
+            notes.append(f"{cid} was chosen twice -- kept on slide {used[s['cid']]} only")
+            return None
+        twin = next((o for o in used if _same_event(by_id[o], s)), None)
+        if twin:
+            notes.append(f"{cid} is the same event as {twin} (slide {used[twin]}) -- not repeated")
+            return None
+        if cats and s["category"] not in cats:
+            notes.append(f"{cid} ({CAROUSEL_CATEGORY_LABELS[s['category']]}) does not belong on slide {slide_n} -- removed")
+            return None
+        used[s["cid"]] = slide_n
+        return s
+
+    slides = []
+    top = take(raw.get("top_story"), 2)
+    if not top and cands["mains"]:
+        best = max((s for s in cands["mains"] if s["cid"] not in used),
+                   key=lambda s: (s["n_established"] > 0, len(s["outlets"])), default=None)
+        top = take(best["cid"], 2) if best else None
+        notes.append("Top story chosen by coverage (the AI's choice was missing or invalid)")
+    raw_slides = raw.get("slides") if isinstance(raw.get("slides"), dict) else {}
+    for sl in CAROUSEL_SLIDES:
+        entry = {"n": sl["n"], "key": sl["key"], "title": sl["title"], "cards": [], "briefs": [], "note": ""}
+        if sl["key"] == "top":
+            entry["cards"] = [_carousel_card(top, stories_ai.get(top["cid"]), day, all_names)] if top else []
+        elif sl.get("cats"):
+            for cid in (raw_slides.get(sl["key"]) or [])[: sl["max"]]:
+                s = take(cid, sl["n"], sl["cats"])
+                if s:
+                    entry["cards"].append(_carousel_card(s, stories_ai.get(s["cid"]), day, all_names))
+        elif sl["key"] == "briefs":
+            for cid in (raw.get("briefs") or [])[: sl["max"]]:
+                s = take(cid, sl["n"], None, mains_only=False)
+                if s:
+                    ai = stories_ai.get(s["cid"]) if isinstance(stories_ai.get(s["cid"]), dict) else {}
+                    card = _carousel_card(s, ai, day, all_names)
+                    entry["briefs"].append({k: card[k] for k in ("cid", "category", "headline", "sources", "verification",
+                                                                   "published")})
+        if sl.get("cats") or sl["key"] in ("top", "briefs"):
+            has = entry["cards"] or entry["briefs"]
+            avail = sl["key"] == "briefs" and cands["briefs"] or any(s["category"] in sl.get("cats", []) for s in cands["mains"])
+            if not has:
+                entry["note"] = ("No story selected for this slide -- the editor may drop the slide or reallocate it."
+                                 if avail or sl["key"] == "top" else
+                                 "No qualifying stories found for this slide today -- drop or reallocate it.")
+        slides.append(entry)
+
+    used_cards = [c for sl in slides for c in sl["cards"]]
+    # Hashtags must relate to the stories actually used: checked against their source headlines and the draft text.
+    blob = " ".join([c["headline"] + " " + c["summary"] for c in used_cards]
+                    + [_story_material(by_id[cid]) for cid in used])
+    hook = _clean_point(raw.get("hook"), []) if raw.get("hook") else ""
+    post = {"hook": hook or f"The day's key developments, {day:%d %B %Y}.",
+            "caption": " ".join(str(raw.get("caption") or "").split()),
+            "hashtags": _clean_hashtags(raw.get("hashtags"), blob) or ["#News", "#India", "#DailyBriefing"],
+            "takeaway": " ".join(str(raw.get("takeaway") or "").split()),
+            "follow_prompt": " ".join(str(raw.get("follow_prompt") or "").split()) or "Follow for tomorrow's roundup."}
+    post_flags = []
+    if not post["caption"]:
+        post_flags.append("Caption missing -- editor to write")
+    if not post["takeaway"]:
+        post_flags.append("Takeaway missing -- editor to write")
+    if len(post["hook"].split()) > 15:
+        post_flags.append(f"Hook is {len(post['hook'].split())} words (aim for under 15)")
+    if re.search(r"\bverified\b", " ".join(str(v) for v in post.values()), re.I):
+        post_flags.append("Post copy uses the word 'verified' -- remove: nothing is verified until approved")
+    alt_raw = raw.get("alt_text") if isinstance(raw.get("alt_text"), dict) else {}
+    alt = {}
+    for sl in slides:
+        a = " ".join(str(alt_raw.get(str(sl["n"])) or "").split())
+        if not a:
+            heads = "; ".join([c["headline"] for c in sl["cards"]] + [b["headline"] for b in sl["briefs"]])
+            a = {1: f"Cover slide: Daily News Wrap-Up for {day:%d %B %Y}. {post['hook']}",
+                 8: f"Closing slide: {post['takeaway'] or 'daily takeaway'} {post['follow_prompt']}"}.get(
+                sl["n"], f"Slide {sl['n']}, {sl['title']}: {heads or 'no stories'}.")
+        alt[sl["n"]] = a
+
+    used_ids = {c["cid"]: sl["n"] for sl in slides for c in sl["cards"] + sl["briefs"]}
+    source_log = []
+    for s in cands["mains"] + cands["briefs"]:
+        outcome = (f"Used -- slide {used_ids[s['cid']]}" if s["cid"] in used_ids else "Shortlisted, not selected")
+        source_log.append(_log_entry(s, outcome))
+    source_log += [_log_entry(e["story"], e["outcome"]) for e in cands["log"]]
+    return {"day": day, "generated": f"{utc_now() + IST_OFFSET:%Y-%m-%d %H:%M} IST", "slides": slides, "post": post,
+            "post_flags": post_flags, "alt_text": alt, "source_log": source_log, "notes": notes, "status": status,
+            "used_template": used_template, "notice": CAROUSEL_DRAFT_NOTICE, "checklist": CAROUSEL_CHECKLIST}
+
+
+def _log_entry(s: dict, outcome: str) -> dict:
+    return {"id": s.get("cid", "--"), "headline": s["headline"], "category": CAROUSEL_CATEGORY_LABELS[s["category"]],
+            "outlets": len(s["outlets"]), "established": s.get("n_established", 0), "published": _first_published(s),
+            "sources": s.get("links") or _story_link_records(s), "outcome": outcome}
+
+
+def gather_daily_carousel(day=None, state_choice: str = "both", client=None, model: str = DEFAULT_MODEL) -> dict:
+    """The full daily carousel DRAFT for one IST calendar day (default today).
+    state_choice: both / ap / telangana / none -- which states feed 'state developments'."""
+    day = day or ist_today()
+    validate_wrap_range(day, day)
+    state_keys = [] if str(state_choice).lower() in ("none", "no", "") else resolve_wrap_states(state_choice)
+    print(f"  - Gathering the day's news across {len(CAROUSEL_CATEGORIES) + len(state_keys)} categories...")
+    by_cat, status = gather_carousel_news(day, state_keys)
+    cands = build_carousel_candidates(by_cat)
+    status["Shortlist"] = (f"{len(cands['mains'])} main candidates, {len(cands['briefs'])} brief candidates, "
+                           f"{sum(1 for e in cands['log'] if e['outcome'].startswith('Excluded'))} excluded as "
+                           f"unverifiable, {sum(1 for e in cands['log'] if e['outcome'].startswith('Dropped'))} "
+                           "cross-category duplicates dropped")
+    print(f"  - Fetching article text for {len(cands['mains'])} shortlisted stories...")
+    got = attach_article_text(cands["mains"])
+    status["Article text"] = f"fetched for {got} of {len(cands['mains'])} shortlisted stories"
+    raw, used_template = None, True
+    if client is not None and cands["mains"]:
+        print("  - Asking Sarvam AI to draft the carousel...")
+        try:
+            raw = generate_carousel_raw(client, model, day, cands)
+            used_template = False
+            status["Draft"] = "written by Sarvam AI -- DRAFT, pending editorial checks"
+        except Exception as e:
+            status["Draft"] = f"Sarvam failed ({_short_error(e)}); stories chosen by coverage, writing left to the editor"
+    else:
+        status["Draft"] = ("no stories found" if not cands["mains"] else
+                           "Sarvam not available; stories chosen by coverage, writing left to the editor")
+    if raw is None:
+        raw = _template_carousel_raw(cands)
+    return assemble_carousel(raw, cands, day, used_template, status)
+
+
+_CAROUSEL_TRIGGER = re.compile(r"\bcarousel\b", re.I)
+
+
+def detect_carousel_request(text: str) -> bool:
+    return bool(_CAROUSEL_TRIGGER.search(text or ""))
+
+
+def carousel_title(c: dict) -> str:
+    return f"DRAFT Daily News Carousel \u2014 {c['day']:%A, %d %B %Y}"
+
+
+def _md_src(r: dict) -> str:
+    tag = {"primary": " (primary source)", "established": "", "other": " (not an established outlet)"}[r["kind"]]
+    note = "" if r["direct"] else " _(Google News link)_"
+    return f"[{_md_link_text(r['name'])}]({_md_url(r['url'])}){tag}{note}"
+
+
+def carousel_slide_markdown(c: dict, sl: dict) -> list:
+    """Markdown lines for one slide's content (shared by the saved file and the app)."""
+    L = []
+    if sl["key"] == "cover":
+        L += [f"**Daily News Wrap-Up** \u00b7 {c['day']:%A, %d %B %Y}", "", f"**Hook:** {c['post']['hook']}", ""]
+    elif sl["key"] == "takeaway":
+        L += [f"**Takeaway:** {c['post']['takeaway'] or '_editor to write_'}", "",
+              f"**Follow prompt:** {c['post']['follow_prompt']}", ""]
+    if sl["note"]:
+        L += [f"_{sl['note']}_", ""]
+    for card in sl["cards"]:
+        L += [f"### {card['headline']}", "",
+              f"- **Summary** ({card['summary_words']} words): {card['summary'] or '_editor to write_'}",
+              "- **Key facts:**"] + [f"  - {f}" for f in card["key_facts"]]
+        if card["context"]:
+            L.append(f"- **Context:** {card['context']}")
+        L += [f"- **Category:** {card['category']}",
+              f"- **Event date:** {card['event_date']} \u00b7 **First published:** {card['published']}",
+              "- **Sources:** " + " \u00b7 ".join(_md_src(r) for r in card["sources"]),
+              f"- **Verification status:** {card['verification']}",
+              f"- **Suggested visual:** {card['visual']}", f"  - _Usage: {card['visual_rules']}_"]
+        if card["flags"]:
+            L += ["- **\u26a0\ufe0f Editor flags:**"] + [f"  - {f}" for f in card["flags"]]
+        L.append("")
+    for b in sl["briefs"]:
+        L.append(f"- **{b['headline']}** \u2014 " + " \u00b7 ".join(_md_src(r) for r in b["sources"][:3])
+                 + f"  \n  _{b['verification']}_")
+    if sl["briefs"]:
+        L.append("")
+    return L
+
+
+def carousel_markdown(c: dict) -> str:
+    L = [f"# {carousel_title(c)}", "", f"> \u26a0\ufe0f **{c['notice']}**", "", f"_Generated {c['generated']}_", ""]
+    if c["used_template"]:
+        L += ["> Sarvam AI wasn't available: stories were chosen by coverage and all writing is left to the editor.", ""]
+    for sl in c["slides"]:
+        L += ["---", "", f"## Slide {sl['n']} \u2014 {sl['title']}", ""] + carousel_slide_markdown(c, sl)
+    p = c["post"]
+    L += ["---", "", "## Post copy", "", f"**Opening hook:** {p['hook']}", "", f"**Caption:** {p['caption'] or '_editor to write_'}",
+          "", "**Hashtags:** " + " ".join(p["hashtags"]), ""]
+    if c["post_flags"]:
+        L += ["**\u26a0\ufe0f Editor flags:**"] + [f"- {f}" for f in c["post_flags"]] + [""]
+    L += ["## Alt text (accessibility)", ""] + [f"- **Slide {n}:** {a}" for n, a in c["alt_text"].items()] + [""]
+    L += ["## Source log (for the editor)", ""]
+    for e in c["source_log"]:
+        L.append(f"- **[{e['id']}] {e['headline']}** \u2014 {e['category']} \u00b7 {e['outlets']} outlet(s), "
+                 f"{e['established']} established \u00b7 first published {e['published']}  \n  _{e['outcome']}_  \n  "
+                 + (" \u00b7 ".join(_md_src(r) for r in e["sources"]) or "no links"))
+    L.append("")
+    if c["notes"]:
+        L += ["## Selection notes", ""] + [f"- {n}" for n in c["notes"]] + [""]
+    L += ["## Editorial checklist (complete before approval)", ""] + [f"- [ ] {x}" for x in c["checklist"]] + [""]
+    L += ["## Sources checked", ""] + [f"- **{k}:** {v}" for k, v in c["status"].items()] + [""]
+    return "\n".join(L)
+
+
+def print_carousel(c: dict) -> None:
+    bar, rule = "=" * 70, "-" * 70
+    print(f"\n{bar}\n{carousel_title(c).upper()}\n{bar}")
+    print(_wrap(c["notice"]))
+    for sl in c["slides"]:
+        print(f"\nSLIDE {sl['n']} -- {sl['title'].upper()}\n{rule}")
+        if sl["key"] == "cover":
+            print(_wrap(f"Daily News Wrap-Up, {c['day']:%A, %d %B %Y}. Hook: {c['post']['hook']}"))
+        if sl["key"] == "takeaway":
+            print(_wrap(f"Takeaway: {c['post']['takeaway'] or '(editor to write)'}"))
+            print(_wrap(f"Follow prompt: {c['post']['follow_prompt']}"))
+        if sl["note"]:
+            print(_wrap(sl["note"]))
+        for card in sl["cards"]:
+            print(_wrap(f"\u2022 {card['headline']}", 70, "  "))
+            print(_wrap(f"Summary ({card['summary_words']} words): {card['summary'] or '(editor to write)'}", 70, "    "))
+            for f in card["key_facts"]:
+                print(_wrap(f"- {f}", 70, "      "))
+            print(_wrap(f"Event date: {card['event_date']} | First published: {card['published']}", 70, "    "))
+            print(_wrap(f"Status: {card['verification']}", 70, "    "))
+            for r in card["sources"][:4]:
+                print(f"      {r['name']}: {r['url']}")
+            for f in card["flags"]:
+                print(_wrap(f"FLAG: {f}", 70, "    "))
+        for b in sl["briefs"]:
+            print(_wrap(f"\u2022 {b['headline']} -- {b['sources'][0]['name'] if b['sources'] else ''}", 70, "  "))
+    print(f"\nPOST COPY\n{rule}")
+    for k in ("hook", "caption"):
+        print(_wrap(f"{k.title()}: {c['post'][k] or '(editor to write)'}"))
+    print(_wrap("Hashtags: " + " ".join(c["post"]["hashtags"])))
+    print(f"\nEDITORIAL CHECKLIST\n{rule}")
+    for x in c["checklist"]:
+        print(_wrap(f"[ ] {x}"))
+    print(f"\nSOURCES CHECKED\n{rule}")
+    for k, v in c["status"].items():
+        print(_wrap(f"{k}: {v}"))
+    print()
+
+
+def _carousel_filename(c: dict, ext: str) -> str:
+    os.makedirs("reports", exist_ok=True)
+    return os.path.join("reports", f"DRAFT_carousel_{c['day']:%Y%m%d}_{datetime.now():%H%M%S}.{ext}")
+
+
+def save_carousel_markdown(c: dict) -> str:
+    path = _carousel_filename(c, "md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(carousel_markdown(c))
+    return path
+
+
+def save_carousel_pdf(c: dict) -> str:
+    if SimpleDocTemplate is None:
+        raise RuntimeError("reportlab isn't installed. Run:  pip install reportlab")
+    path = _carousel_filename(c, "pdf")
+    styles = _pdf_styles()
+    bullet = ParagraphStyle("CarBullet", parent=styles["BodyText"], fontSize=9.5, leading=13, leftIndent=14,
+                            bulletIndent=4, spaceAfter=2)
+    flag = ParagraphStyle("CarFlag", parent=bullet, textColor=colors.HexColor("#8a2a2a"))
+    width = 6.5 * inch
+
+    def banner(text, bg, fg="#000000"):
+        t = Table([[Paragraph(f"<font color='{fg}'><b>{xml_escape(text)}</b></font>", styles["Body"])]], colWidths=[width])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(bg)), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                               ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+        return t
+
+    def links(recs):
+        return " \u00b7 ".join(_pdf_link(r["url"], r["name"] + (" (primary)" if r["kind"] == "primary" else "")) for r in recs)
+
+    S = [Paragraph(xml_escape(carousel_title(c)), styles["ReportTitle"]),
+         Paragraph(f"Generated {c['generated']}", styles["Meta"]), banner(c["notice"], "#fde2e2", "#8a2a2a"), Spacer(1, 6)]
+    for sl in c["slides"]:
+        S += [Spacer(1, 6), banner(f"Slide {sl['n']} \u2014 {sl['title']}", "#1f3a5f", "#ffffff"), Spacer(1, 3)]
+        if sl["key"] == "cover":
+            S.append(Paragraph(f"<b>Daily News Wrap-Up</b> \u00b7 {c['day']:%A, %d %B %Y}<br/><b>Hook:</b> "
+                               f"{xml_escape(c['post']['hook'])}", styles["Body"]))
+        if sl["key"] == "takeaway":
+            S.append(Paragraph(f"<b>Takeaway:</b> {xml_escape(c['post']['takeaway'] or 'editor to write')}<br/>"
+                               f"<b>Follow prompt:</b> {xml_escape(c['post']['follow_prompt'])}", styles["Body"]))
+        if sl["note"]:
+            S.append(Paragraph(f"<i>{xml_escape(sl['note'])}</i>", styles["Empty"]))
+        for card in sl["cards"]:
+            S.append(Paragraph(f"<b>{xml_escape(card['headline'])}</b>", styles["SubSection"]))
+            items = [f"<b>Summary</b> ({card['summary_words']} words): {xml_escape(card['summary'] or 'editor to write')}"]
+            items += [f"<b>Key fact:</b> {xml_escape(f)}" for f in card["key_facts"]]
+            if card["context"]:
+                items.append(f"<b>Context:</b> {xml_escape(card['context'])}")
+            items += [f"<b>Event date:</b> {xml_escape(card['event_date'])} \u00b7 <b>First published:</b> {xml_escape(card['published'])}",
+                      f"<b>Sources:</b> {links(card['sources'])}",
+                      f"<b>Verification status:</b> {xml_escape(card['verification'])}",
+                      f"<b>Suggested visual:</b> {xml_escape(card['visual'])} <i>({xml_escape(card['visual_rules'])})</i>"]
+            S += [Paragraph(x, bullet, bulletText="\u2022") for x in items]
+            S += [Paragraph(f"FLAG: {xml_escape(f)}", flag, bulletText="!") for f in card["flags"]]
+        for b in sl["briefs"]:
+            S.append(Paragraph(f"<b>{xml_escape(b['headline'])}</b> \u2014 {links(b['sources'][:3])}", bullet,
+                               bulletText="\u2022"))
+    p = c["post"]
+    S += [Paragraph("Post copy", styles["Section"]),
+          Paragraph(f"<b>Opening hook:</b> {xml_escape(p['hook'])}", styles["Body"]),
+          Paragraph(f"<b>Caption:</b> {xml_escape(p['caption'] or 'editor to write')}", styles["Body"]),
+          Paragraph(f"<b>Hashtags:</b> {xml_escape(' '.join(p['hashtags']))}", styles["Body"])]
+    S += [Paragraph(f"FLAG: {xml_escape(f)}", flag, bulletText="!") for f in c["post_flags"]]
+    S.append(Paragraph("Alt text (accessibility)", styles["Section"]))
+    S += [Paragraph(f"<b>Slide {n}:</b> {xml_escape(a)}", bullet, bulletText="\u2022") for n, a in c["alt_text"].items()]
+    S.append(Paragraph("Source log (for the editor)", styles["Section"]))
+    for e in c["source_log"]:
+        S.append(Paragraph(f"<b>[{xml_escape(e['id'])}] {xml_escape(e['headline'])}</b> \u2014 {xml_escape(e['category'])}, "
+                           f"{e['outlets']} outlet(s), {e['established']} established, first published "
+                           f"{xml_escape(e['published'])}. <i>{xml_escape(e['outcome'])}</i><br/>{links(e['sources'])}",
+                           bullet, bulletText="\u2022"))
+    if c["notes"]:
+        S.append(Paragraph("Selection notes", styles["Section"]))
+        S += [Paragraph(xml_escape(n), bullet, bulletText="\u2022") for n in c["notes"]]
+    S.append(Paragraph("Editorial checklist (complete before approval)", styles["Section"]))
+    S += [Paragraph(xml_escape(x), bullet, bulletText="\u2610") for x in c["checklist"]]
+    S.append(Paragraph("Sources checked", styles["Section"]))
+    S += [Paragraph(f"<b>{xml_escape(k)}:</b> {xml_escape(v)}", styles["ItemMeta"]) for k, v in c["status"].items()]
+    SimpleDocTemplate(path, pagesize=letter, topMargin=0.6 * inch, bottomMargin=0.6 * inch,
+                      title=carousel_title(c)).build(S)
+    return path
+
+
+# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
@@ -3990,6 +4769,10 @@ def main():
     ap.add_argument("--no-telegram", action="store_true")
     ap.add_argument("--no-brave", action="store_true")
     ap.add_argument("--no-social-news", action="store_true")
+    ap.add_argument("--carousel", nargs="?", const="both", default=None, metavar="STATES",
+                    help="DRAFT eight-slide daily news carousel (national, state, world, business, tech/science/"
+                         "health/environment/sports). STATES for the state slide: both (default), ap, telangana or "
+                         "none. Use --date for another day; --save/--pdf to keep it")
     ap.add_argument("--wrap-party", default="", metavar="PARTY",
                     help="With --wrap: a wrap-up about one party in AP/Telangana, e.g. BRS, TDP, YSRCP, Congress, BJP, "
                          "\"Jana Sena\", AIMIM")
@@ -4012,6 +4795,10 @@ def main():
         run_wrap(args.wrap, args, client)
         return
 
+    if args.carousel is not None:
+        run_carousel(args.carousel, args, client)
+        return
+
     # Scripted/one-shot usage (name given on the command line, e.g. in a shell
     # script or cron job) runs exactly once and exits -- unchanged from before.
     # Interactive usage (no name given) keeps prompting for the next one,
@@ -4024,14 +4811,16 @@ def main():
         if raw is None:
             try:
                 raw = input("\nEnter a politician or party (e.g. 'KCR' or 'BJP'), 'daily wrap' for today's AP & "
-                            "Telangana news, or press Enter to quit: ").strip()
+                            "Telangana news, 'carousel' for the daily news carousel, or press Enter to quit: ").strip()
             except EOFError:
                 raw = ""
             if not raw or raw.lower() in ("exit", "quit"):
                 break
 
         wrap_choice = detect_wrap_request(raw)
-        if wrap_choice:
+        if detect_carousel_request(raw):
+            run_carousel("both", args, client)
+        elif wrap_choice:
             rng = detect_wrap_range(raw)
             run_wrap(wrap_choice, args, client, *(rng or (None, None)), party=detect_wrap_party(raw) or "")
         else:
@@ -4075,6 +4864,28 @@ def run_one_report(raw: str, args, client) -> None:
             print("Skipped PDF export: reportlab isn't installed. Run:  pip install reportlab")
         else:
             print(f"Saved PDF report to: {save_pdf(name, wiki, data, narrative, start_date, end_date, status, used_template, stories)}\n")
+
+
+def run_carousel(states: str, args, client) -> None:
+    """Build the DRAFT daily news carousel and print/save it."""
+    day = args.date.date() if getattr(args, "date", None) else None
+    try:
+        if str(states).lower() not in ("none", "no"):
+            resolve_wrap_states(states)
+        validate_wrap_range(day or ist_today(), day or ist_today())
+    except ValueError as e:
+        print(f"Error: {e}")
+        return
+    print(f"\nBuilding the DRAFT daily news carousel for {(day or ist_today()):%d %b %Y}...")
+    c = gather_daily_carousel(day, states, client, args.model)
+    print_carousel(c)
+    if args.save:
+        print(f"Saved DRAFT carousel to: {save_carousel_markdown(c)}\n")
+    if args.pdf:
+        if SimpleDocTemplate is None:
+            print("Skipped PDF export: reportlab isn't installed. Run:  pip install reportlab")
+        else:
+            print(f"Saved DRAFT carousel PDF to: {save_carousel_pdf(c)}\n")
 
 
 def run_wrap(choice: str, args, client, start_day=None, end_day=None, party=None) -> None:
