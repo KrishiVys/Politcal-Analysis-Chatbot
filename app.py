@@ -78,7 +78,7 @@ if _app_password and not st.session_state.get("auth_ok"):
 # updatedcode.py is in the folder (or an old copy is still loaded in a running
 # app), stop with clear instructions instead of failing mid-search.
 if (not hasattr(uc, "resolve_subject") or not hasattr(uc, "build_top_stories") or not hasattr(uc, "gather_daily_wrap")
-        or not hasattr(uc, "resolve_wrap_party")):
+        or not hasattr(uc, "gather_daily_carousel")):
     st.error(
         "**Version mismatch:** this app.py is newer than the updatedcode.py it found at:\n\n"
         f"`{getattr(uc, '__file__', 'unknown location')}`\n\n"
@@ -454,6 +454,72 @@ def render_wrap(wrap: dict, key_prefix: str) -> None:
     render_wrap_downloads(wrap, key_prefix)
 
 
+def render_carousel(c: dict, key_prefix: str) -> None:
+    st.markdown(f"### 🎠 {uc.carousel_title(c)}")
+    st.warning(f"**{c['notice']}**")
+    if c["used_template"]:
+        st.caption("Sarvam AI wasn't available: stories were chosen by coverage and all writing is left to the editor.")
+    st.caption(f"Generated {c['generated']}")
+    tabs = st.tabs(["🎠 Slides", "📝 Post copy", "♿ Alt text", "🗂️ Source log", "✅ Checklist", "🔎 Sources checked"])
+    with tabs[0]:
+        for sl in c["slides"]:
+            n_items = len(sl["cards"]) + len(sl["briefs"])
+            flags = sum(len(card["flags"]) for card in sl["cards"])
+            label = (f"Slide {sl['n']} — {sl['title']}" + (f"  ·  {n_items} stor{'y' if n_items == 1 else 'ies'}" if n_items else "")
+                     + (f"  ·  ⚠️ {flags} flag{'s' if flags != 1 else ''}" if flags else ""))
+            with st.expander(label, expanded=sl["n"] in (1, 2)):
+                st.markdown("\n".join(uc.carousel_slide_markdown(c, sl)) or "_(empty)_")
+        if c["notes"]:
+            with st.expander("Selection notes (choices the code corrected)"):
+                st.markdown("\n".join(f"- {n}" for n in c["notes"]))
+    with tabs[1]:
+        p = c["post"]
+        st.markdown("**Opening hook**")
+        st.code(p["hook"], language=None)
+        st.markdown("**Caption**")
+        st.code(p["caption"] or "(editor to write)", language=None)
+        st.markdown("**Hashtags**")
+        st.code(" ".join(p["hashtags"]), language=None)
+        for f in c["post_flags"]:
+            st.caption(f"⚠️ {f}")
+    with tabs[2]:
+        st.markdown("\n".join(f"- **Slide {n}:** {a}" for n, a in c["alt_text"].items()))
+    with tabs[3]:
+        import pandas as pd
+        st.dataframe(pd.DataFrame([{
+            "ID": e["id"], "Headline": e["headline"], "Category": e["category"], "Outlets": e["outlets"],
+            "Established": e["established"], "First published": e["published"], "Outcome": e["outcome"],
+            "Main source": e["sources"][0]["url"] if e["sources"] else ""} for e in c["source_log"]]),
+            use_container_width=True, hide_index=True)
+    with tabs[4]:
+        st.caption("For the editor. Ticking these here does not approve, publish or schedule anything.")
+        for i, item in enumerate(c["checklist"]):
+            st.checkbox(item, key=f"{key_prefix}_chk_{i}")
+    with tabs[5]:
+        render_sources_tab(c["status"])
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📄 Prepare Markdown (draft)", key=f"{key_prefix}_cmd_btn"):
+            path = uc.save_carousel_markdown(c)
+            with open(path, "rb") as f:
+                st.session_state[f"{key_prefix}_cmd"] = (os.path.basename(path), f.read())
+        if f"{key_prefix}_cmd" in st.session_state:
+            fname, content = st.session_state[f"{key_prefix}_cmd"]
+            st.download_button("Download .md", content, file_name=fname, mime="text/markdown", key=f"{key_prefix}_cmd_dl")
+    with col2:
+        if uc.SimpleDocTemplate is None:
+            st.caption("PDF export needs: pip install reportlab")
+        else:
+            if st.button("📑 Prepare PDF (draft)", key=f"{key_prefix}_cpdf_btn"):
+                path = uc.save_carousel_pdf(c)
+                with open(path, "rb") as f:
+                    st.session_state[f"{key_prefix}_cpdf"] = (os.path.basename(path), f.read())
+            if f"{key_prefix}_cpdf" in st.session_state:
+                fname, content = st.session_state[f"{key_prefix}_cpdf"]
+                st.download_button("Download .pdf", content, file_name=fname, mime="application/pdf",
+                                   key=f"{key_prefix}_cpdf_dl")
+
+
 def render_wrap_downloads(wrap: dict, key_prefix: str) -> None:
     col1, col2 = st.columns(2)
     with col1:
@@ -550,6 +616,18 @@ def render_empty_notice(result: dict) -> None:
 def render_assistant_message(msg: dict, key_prefix: str) -> None:
     """Shared by the live turn and history replay, so widget keys match on reruns
     (that is what makes buttons like "Run fresh" and the downloads work)."""
+    if msg.get("kind") == "carousel":
+        c = msg["carousel"]
+        if msg.get("from_cache"):
+            c1, c2 = st.columns([4, 1])
+            c1.info(f"♻️ Reused a carousel from {msg.get('cache_age_min', 0)} minute(s) ago, so no new API calls were made.")
+            if c2.button("🔄 Run fresh", key=f"{key_prefix}_fresh"):
+                st.session_state.force_fresh = True
+                st.session_state.trigger_prompt = c.get("_query") or "carousel"
+                st.session_state.trigger_carousel = (c["day"], c.get("_states", "both"))
+                st.rerun()
+        render_carousel(c, key_prefix)
+        return
     if msg.get("kind") == "wrap":
         wrap = msg["wrap"]
         if msg.get("from_cache"):
@@ -593,11 +671,13 @@ st.markdown(
 
 for key, default in [("messages", []), ("trigger_prompt", None), ("result_cache", {}),
                      ("recent_queries", []), ("force_fresh", False), ("trigger_wrap_range", None),
-                     ("trigger_wrap_party", None)]:
+                     ("trigger_wrap_party", None), ("trigger_carousel", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
 WRAP_CHOICES = {"Andhra Pradesh & Telangana": "both", "Andhra Pradesh": "andhra pradesh", "Telangana": "telangana"}
+CAROUSEL_STATE_CHOICES = {"Andhra Pradesh & Telangana": "both", "Andhra Pradesh": "ap", "Telangana": "telangana",
+                          "None (national only)": "none"}
 WRAP_PARTY_CHOICES = ["All news", "BRS", "Congress", "BJP", "TDP", "YSRCP", "Jana Sena", "AIMIM", "CPI", "CPI(M)",
                       "Other party…"]
 
@@ -644,6 +724,20 @@ with st.sidebar:
         st.rerun()
     st.caption("Or type in the chat box: \"daily wrap\", \"daily wrap telangana\", \"yesterday's AP roundup\", "
                "\"weekly wrap\", \"wrap-up last 5 days\" -- or for a party: \"BRS wrap\", \"TDP weekly wrap-up\".")
+
+    st.divider()
+    st.subheader("🎠 Daily news carousel (draft)")
+    car_states_label = st.selectbox("State slide", list(CAROUSEL_STATE_CHOICES), key="opt_car_states",
+                                    help="Which states feed 'national and state developments'. The carousel also "
+                                         "covers national politics, world affairs, business, tech/science, health, "
+                                         "environment and sports.")
+    car_day = st.date_input("Day", value=uc.ist_today(), max_value=uc.ist_today(), key="opt_car_day")
+    if st.button("🎠 Generate draft carousel", use_container_width=True, key="carousel_btn"):
+        st.session_state.trigger_prompt = f"Daily news carousel, {car_day:%d %b %Y}"
+        st.session_state.trigger_carousel = (car_day, CAROUSEL_STATE_CHOICES[car_states_label])
+        st.rerun()
+    st.caption("An eight-slide DRAFT for editorial review -- nothing is published or treated as verified. "
+               "Or type \"carousel\" in the chat box.")
 
     st.divider()
     st.subheader("📋 Politician / party report")
@@ -755,12 +849,51 @@ with st.expander("ℹ️ How this works"):
         "widely carried first), the timeline, headlines, and social posts, and download the report as Markdown or PDF.\n"
         "5. For a **news wrap-up of Andhra Pradesh and/or Telangana** -- one day or a date range of up to 31 days -- "
         "use the wrap-up section at the top of the sidebar, or type \"daily wrap\" / \"weekly wrap\" in the chat box. "
-        "Set **Focus** to a party (or type e.g. \"BRS wrap\") for a wrap-up about that party in these states.\n\n"
+        "Set **Focus** to a party (or type e.g. \"BRS wrap\") for a wrap-up about that party in these states.\n"
+        "6. For an eight-slide **daily news carousel** (a DRAFT for editorial review, with sources, verification "
+        "statuses, caption, hashtags and alt text), use the carousel section in the sidebar or type \"carousel\".\n\n"
         "Paid sources (Sarvam, Brave, X) use real API quota on every new search. "
         "Use the **Free sources only** preset to avoid that, apart from the Sarvam summary."
     )
 
 client = uc.SarvamAI(api_subscription_key=sarvam_key) if (uc.SarvamAI and sarvam_key) else None
+
+
+def run_carousel_turn(query: str, day, states: str, key_prefix: str) -> None:
+    """One chat turn for the DRAFT daily news carousel."""
+    cache_key = ("carousel", str(day), states)
+    force_fresh = st.session_state.force_fresh
+    st.session_state.force_fresh = False
+    cached = st.session_state.result_cache.get(cache_key)
+    cache_age = (time.time() - cached[0]) / 60 if cached else None
+    if use_cache and not force_fresh and cached and cache_age < CACHE_TTL_MINUTES:
+        msg = {"role": "assistant", "kind": "carousel", "carousel": cached[1], "from_cache": True,
+               "cache_age_min": int(cache_age)}
+        render_assistant_message(msg, key_prefix)
+        st.session_state.messages.append(msg)
+        return
+    placeholder = st.empty()
+    log = ProgressLog(placeholder)
+    try:
+        with contextlib.redirect_stdout(log):
+            c = uc.gather_daily_carousel(day, states, client)
+        placeholder.empty()
+        c["_query"], c["_states"] = query, states
+        with st.expander("🛠️ Technical log"):
+            st.code(log.getvalue() or "(no output)")
+        msg = {"role": "assistant", "kind": "carousel", "carousel": c}
+        render_assistant_message(msg, key_prefix)
+        st.session_state.result_cache[cache_key] = (time.time(), c, False)
+        st.session_state.messages.append(msg)
+        if hasattr(st, "toast"):
+            st.toast("Draft carousel ready for editorial review", icon="🎠")
+    except Exception as e:
+        placeholder.empty()
+        text = f"Something went wrong building the carousel: {e}"
+        with st.expander("🛠️ Technical log"):
+            st.code(log.getvalue() or "(no output)")
+        st.error(text)
+        st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
 
 
 def run_wrap_turn(query: str, choice: str, start_day, end_day, key_prefix: str, party: str = "") -> None:
@@ -815,6 +948,7 @@ if not st.session_state.messages:
                                 ("News wrap-up", ["Daily wrap-up: Andhra Pradesh & Telangana",
                                                   "Daily wrap-up: Telangana", "Daily wrap-up: Andhra Pradesh",
                                                   "Weekly wrap-up: Andhra Pradesh & Telangana"]),
+                                ("Daily carousel (draft)", ["Daily news carousel"]),
                                 ("Party wrap-up", ["BRS news wrap-up: Telangana", "Congress news wrap-up: Telangana",
                                                    "TDP news wrap-up: Andhra Pradesh",
                                                    "YSRCP weekly wrap-up: Andhra Pradesh"])]:
@@ -850,7 +984,11 @@ if prompt:
     key_prefix = f"msg{len(st.session_state.messages)}"  # index this reply will have in history
     wrap_choice = uc.detect_wrap_request(prompt, default=WRAP_CHOICES[wrap_label])
     with st.chat_message("assistant", avatar="🏛️"):
-        if wrap_choice:
+        if st.session_state.trigger_carousel or uc.detect_carousel_request(prompt):
+            car = st.session_state.trigger_carousel or (car_day, CAROUSEL_STATE_CHOICES[car_states_label])
+            st.session_state.trigger_carousel = None
+            run_carousel_turn(prompt, car[0], car[1], key_prefix)
+        elif wrap_choice:
             # Dates: an explicit range from a button/"Run fresh" first, then a period typed in words
             # ("weekly", "last 5 days", "yesterday"), then whatever is set in the sidebar.
             rng = st.session_state.trigger_wrap_range
