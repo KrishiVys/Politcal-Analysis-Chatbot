@@ -99,7 +99,7 @@ USAGE
     python updatedcode.py --wrap ap --date 2026-10-09 --pdf
     python updatedcode.py --wrap --from-date 2026-10-01 --to-date 2026-10-07 --save   # a date range (max 31 days)
     python updatedcode.py --wrap telangana --wrap-party BRS               # one party's news in AP/Telangana
-    python updatedcode.py --carousel --save --pdf                         # DRAFT 8-slide daily news carousel
+    python updatedcode.py --carousel --save --pdf                         # DRAFT 9-slide daily news carousel
     (In interactive mode, typing "daily wrap", "today's news telangana",
      "AP roundup", "weekly wrap" or "telangana wrap last 5 days" does the same.)
 
@@ -3756,7 +3756,7 @@ def save_wrap_pdf(wrap: dict) -> str:
 # --------------------------------------------------------------------------
 # Daily news carousel (editorial DRAFT)
 # --------------------------------------------------------------------------
-# An eight-slide daily news carousel for a digital briefing, following the
+# A nine-slide daily news carousel for a digital briefing, following the
 # editorial instructions: national/state, world, business, tech/science/health/
 # environment/sports and public-interest news; prioritised by significance;
 # every story with source URLs and a verification status; no event repeated
@@ -3793,22 +3793,78 @@ CAROUSEL_CATEGORIES = [
      '(cricket OR football OR hockey OR Olympics OR badminton) sourcecountry:IN'),
 ]
 CAROUSEL_STATE_LABEL = "State developments"
-CAROUSEL_CATEGORY_ORDER = ["national", "state", "world", "business", "tech", "health_edu", "environment", "sports"]
+# Order used when the same event turns up in two categories: a topic beats "state", so an AP/Telangana business
+# story stays on the Business slide (tagged with its state) rather than the State slide.
+CAROUSEL_CATEGORY_ORDER = ["national", "world", "business", "tech", "health_edu", "environment", "sports", "state"]
 CAROUSEL_CATEGORY_LABELS = {k: l for k, l, _, _ in CAROUSEL_CATEGORIES}
 CAROUSEL_CATEGORY_LABELS["state"] = CAROUSEL_STATE_LABEL
 
 CAROUSEL_SLIDES = [
     {"n": 1, "key": "cover", "title": "Cover and date"},
     {"n": 2, "key": "top", "title": "Top story", "max": 1},
-    {"n": 3, "key": "national_state", "title": "National and state developments", "cats": ["national", "state"], "max": 3},
-    {"n": 4, "key": "world", "title": "World affairs", "cats": ["world"], "max": 3},
-    {"n": 5, "key": "business", "title": "Business and economy", "cats": ["business"], "max": 3},
-    {"n": 6, "key": "more", "title": "Technology, science, health, environment and sports",
+    {"n": 3, "key": "national", "title": "National developments", "cats": ["national"], "max": 3},
+    {"n": 4, "key": "state", "title": "State developments", "cats": ["state"], "max": 4},
+    {"n": 5, "key": "world", "title": "World affairs", "cats": ["world"], "max": 3},
+    {"n": 6, "key": "business", "title": "Business and economy", "cats": ["business"], "max": 3},
+    {"n": 7, "key": "more", "title": "Technology, science, health, environment and sports",
      "cats": ["tech", "health_edu", "environment", "sports"], "max": 3},
-    {"n": 7, "key": "briefs", "title": "Additional headlines in brief", "max": 5},
-    {"n": 8, "key": "takeaway", "title": "Daily takeaway and follow prompt"},
+    {"n": 8, "key": "briefs", "title": "Additional headlines in brief", "max": 5},
+    {"n": 9, "key": "takeaway", "title": "Daily takeaway and follow prompt"},
 ]
+CAROUSEL_STORY_SLIDES = ["national", "state", "world", "business", "more"]
+
+# AP/Telangana-focused search for each topic: these keywords AND the chosen states' names.
+CAROUSEL_STATE_TOPIC_TERMS = {
+    "national": '(Centre OR "Union government" OR Parliament OR "Supreme Court" OR "Prime Minister" OR "Union Minister")',
+    "world": '(abroad OR overseas OR NRI OR diaspora OR Gulf OR "United States" OR visa OR embassy)',
+    "business": '(investment OR industry OR company OR jobs OR MoU OR startup OR economy OR budget OR revenue)',
+    "tech": '(technology OR "artificial intelligence" OR startup OR "data centre" OR science OR research OR ISRO)',
+    "health_edu": '(hospital OR health OR disease OR doctors OR school OR university OR students OR exam)',
+    "environment": '(climate OR pollution OR rain OR flood OR cyclone OR heatwave OR forest OR wildlife)',
+    "sports": '(cricket OR football OR badminton OR hockey OR athlete OR medal OR tournament OR chess)',
+}
+_CAROUSEL_STATE_NAMES = {"andhra pradesh": '("Andhra Pradesh" OR Visakhapatnam OR Vijayawada OR Amaravati OR Tirupati)',
+                         "telangana": '("Telangana" OR Hyderabad OR Warangal)'}
+
+# Topic of a state story by its headline -- a Hyderabad AI centre belongs on the Tech slide, not the State slide.
+_CAROUSEL_TOPIC_PATTERNS = [
+    ("business", _rx([r"invest", r"industr", r"compan(y|ies)", r"jobs\b", r"startup", r"mous?\b", r"econom", r"revenue",
+                      r"budget", r"gst\b", r"exports?\b", r"market", r"shares?\b", r"stocks?\b", r"ipo\b", r"banks?\b",
+                      r"rbi\b", r"sensex", r"nifty", r"rupee", r"inflation", r"gdp\b", r"manufactur", r"factory"])),
+    ("tech", _rx([r"ai\b", r"artificial intelligence", r"technolog", r"tech\b", r"software", r"it (sector|company|companies|park|firm)",
+                  r"data cent(er|re)", r"semiconductor", r"isro", r"satellite", r"science", r"scientist", r"research",
+                  r"innovation", r"digital", r"robot", r"quantum", r"5g\b", r"electronics", r"space\b"])),
+    ("health_edu", _rx([r"hospital", r"health", r"doctors?\b", r"medical", r"disease", r"dengue", r"fever", r"vaccin",
+                        r"patients?\b", r"aarogyasri", r"schools?\b", r"students?\b", r"universit", r"college", r"exams?\b",
+                        r"education", r"teachers?\b", r"admission", r"neet\b", r"eamcet", r"eapcet"])),
+    ("environment", _rx([r"climate", r"pollution", r"rain", r"flood", r"cyclone", r"heat ?wave", r"drought", r"forest",
+                         r"wildlife", r"tigers?\b", r"environment", r"monsoon", r"imd\b", r"weather", r"waterlog", r"emission"])),
+    ("sports", _rx([r"cricket", r"football", r"hockey", r"badminton", r"tennis", r"chess", r"olympi", r"athlet", r"medals?\b",
+                    r"tournament", r"championship", r"ipl\b", r"odi\b", r"t20", r"test match", r"kabaddi", r"wrestl",
+                    r"boxing", r"sports?\b", r"stadium", r"shuttler", r"cricketer", r"grandmaster"])),
+    ("world", _rx([r"abroad", r"overseas", r"nri\b", r"diaspora", r"united states", r"america", r"gulf", r"saudi", r"riyadh",
+                   r"dubai", r"uae\b", r"london", r"canada", r"australia", r"russia", r"ukraine", r"china", r"israel",
+                   r"gaza", r"embassy"])),
+]
+
+
+def carousel_topic(text: str):
+    """The topic slide a headline belongs on (business, tech, ...), or None."""
+    best, best_hits = None, 0
+    for key, pat in _CAROUSEL_TOPIC_PATTERNS:
+        h = _hits(pat, text or "")
+        if h > best_hits:
+            best, best_hits = key, h
+    return best
+
+
+def related_states(text: str, state_keys: list) -> list:
+    """Which of the chosen states a story is about, by its place, people and party names."""
+    return [WRAP_STATES[k]["label"] for k in state_keys if _rx(_WRAP_OWN_PLACES[k]).search(text or "")]
+
+
 CAROUSEL_CANDIDATES_PER_CATEGORY = 4
+CAROUSEL_STATE_SHORTLIST_EXTRA = 2   # AP/Telangana stories always added to each topic's shortlist
 CAROUSEL_BRIEF_POOL = 8
 CAROUSEL_SUMMARY_WORDS = (40, 70)
 CAROUSEL_HEADLINE_MAX_WORDS = 12
@@ -3823,6 +3879,7 @@ CAROUSEL_CHECKLIST = [
     "Every figure flagged as 'not found in the source material' checked against the original source",
     "Allegations attributed to whoever made them; facts separated from analysis",
     "No underlying event repeated across slides",
+    "The Andhra Pradesh / Telangana angle checked in every section (stories added by the coverage rule reviewed)",
     "Every image licensed, and credited as the licence requires",
     "Caption, hook and hashtags checked for accuracy and neutrality",
     "Final approval by: ____________________   Date/time: ____________",
@@ -3867,29 +3924,39 @@ def _carousel_state_queries(state_keys: list) -> list:
 
 
 def gather_carousel_news(day, state_keys: list) -> tuple:
-    """({category: [articles]}, status) for one IST calendar day: one Google News
-    search and one GDELT search per category (GDELT spaced out), plus the chosen
-    states for 'state developments'."""
+    """({category: [articles]}, status) for one IST calendar day: per category,
+    one Google News and one GDELT search (GDELT spaced out), plus -- for each
+    topic -- one AP/Telangana-focused Google News search, and the chosen
+    states' general news for 'state developments'."""
     start, end = ist_day_window(day)
     window = f"after:{(day - timedelta(days=1)):%Y-%m-%d} before:{(day + timedelta(days=1)):%Y-%m-%d}"
     jobs = [(k, l, gq, dq, None) for k, l, gq, dq in CAROUSEL_CATEGORIES]
-    jobs += [("state", label, gq, dq, label) for _sk, label, gq, dq in _carousel_state_queries(state_keys)]
+    jobs += [("state", label, gq, dq, sk) for sk, label, gq, dq in _carousel_state_queries(state_keys)]
+    if state_keys:
+        names = "(" + " OR ".join(_CAROUSEL_STATE_NAMES[k][1:-1] for k in state_keys) + ")"
+        # Their results are placed by what each headline is about, NOT by which search found them: Google
+        # matches words anywhere in an article, so the "world" search can return a story that isn't world news.
+        jobs += [("state_topic", f"{CAROUSEL_CATEGORY_LABELS[k]} (AP/Telangana)", f"{terms} {names}", None, None)
+                 for k, terms in CAROUSEL_STATE_TOPIC_TERMS.items()]
     by_cat, status = {}, {}
-    for key, label, gq, dq, state_label in jobs:
+    for key, label, gq, dq, state_key in jobs:
         got, fails = [], []
         try:
             got += get_google_news_fallback(f"{gq} {window}", 100, start, end)
         except Exception as e:
             fails.append(f"Google News ({_short_error(e)})")
-        try:
-            got += _gdelt_throttled(dq, 75, start, end)
-        except Exception as e:
-            fails.append(f"GDELT ({_short_error(e)})")
+        if dq:
+            try:
+                got += _gdelt_throttled(dq, 75, start, end)
+            except Exception as e:
+                fails.append(f"GDELT ({_short_error(e)})")
         got = _dedupe_articles(_filter_by_date(got, start, end))
+        if state_key:   # a state search: drop stories clearly about another state or country
+            got = [a for a in got if not is_off_state(a.get("headline", ""), state_key)]
         for a in got:
             a["category"] = key
-            if state_label:
-                a["state"] = state_label
+            if state_key:
+                a["state_origin"] = WRAP_STATES[state_key]["label"]
         by_cat.setdefault(key, []).extend(got)
         status[f"{label} news"] = f"{len(got)} articles" + ("; failed: " + "; ".join(fails) if fails else "")
         time.sleep(0.5)
@@ -3921,46 +3988,86 @@ def _same_event(a: dict, b: dict) -> bool:
     return len(shared) >= 3 and len(shared) / min(len(wa), len(wb)) >= 0.6
 
 
-def build_carousel_candidates(by_cat: dict) -> dict:
-    """Group each category's articles into stories, drop the same event turning
-    up in two categories, and sort stories into: shortlisted main candidates (top
-    few per category), a pool for 'headlines in brief', and the excluded (only
-    one source, and not an established one -- can't be adequately verified)."""
-    pool, log = [], []
-    for cat in CAROUSEL_CATEGORY_ORDER:
-        stories = build_top_stories({"headlines": by_cat.get(cat, []), "social_news": []}, max_stories=40, window_days=1)
-        for s in stories:
-            s["category"] = cat
-            states = {it.get("state") for it in s["items"] if it.get("state")}
-            s["state"] = ", ".join(sorted(states)) if states else ""
+def _tag_story(s: dict, state_keys: list) -> None:
+    states = related_states(_story_material(s), state_keys)
+    origin = sorted({it.get("state_origin") for it in s["items"] if it.get("state_origin")})
+    s["related_states"] = sorted(set(states) | (set(origin) if s["category"] == "state" else set()))
+
+
+def build_carousel_candidates(by_cat: dict, state_keys=()) -> dict:
+    """Group each category's articles into stories and place every story on the
+    right slide:
+      * news ABOUT Andhra Pradesh / Telangana that is really business, tech,
+        health, environment, sports or world news goes on THAT topic's slide,
+        tagged with its state; the rest goes on the State slide;
+      * the National slide keeps India-level news not specific to AP/Telangana.
+    The same event in two categories is kept once. Stories are then sorted into
+    shortlisted main candidates (the top few per category, ALWAYS including the
+    best AP/Telangana ones), a pool for 'headlines in brief', and the excluded
+    (one source, not an established outlet -- can't be adequately verified)."""
+    state_keys = list(state_keys or [])
+    rank = lambda s: (s["n_established"] > 0, len(s["outlets"]), s["primary"],
+                      s["last_seen"].timestamp() if s.get("last_seen") else 0)
+    every, log = [], []
+    for cat in CAROUSEL_CATEGORY_ORDER + ["state_topic"]:
+        for s in build_top_stories({"headlines": by_cat.get(cat, []), "social_news": []}, max_stories=40, window_days=1):
+            s["category"] = "state" if cat == "state_topic" else cat
+            _tag_story(s, state_keys)
+            topic = carousel_topic(" ".join(it["headline"] for it in s["items"]))
+            if cat == "state_topic":
+                # from an AP/Telangana topic search: its topic if the headline shows one; the State slide if it's
+                # about a state but no topic; otherwise it's noise the search happened to match
+                if topic:
+                    s["category"] = topic
+                elif not s["related_states"]:
+                    log.append({"story": {**s, "category": "state"}, "outcome": "Dropped -- found by an AP/Telangana "
+                                "search but the headline shows neither a topic nor a state link"})
+                    continue
+            elif cat == "state" or (cat == "national" and s["related_states"]):
+                # news about AP/Telangana: on its topic's slide if it has one, otherwise on the State slide
+                s["category"] = topic or "state"
             s["links"] = _story_link_records(s)
             s["n_established"] = sum(1 for r in s["links"] if r["kind"] in ("established", "primary"))
             s["primary"] = any(r["kind"] == "primary" for r in s["links"])
-            dup = next((p for p in pool if _same_event(p, s)), None)
-            if dup:
-                log.append({"story": s, "outcome": f"Dropped -- same event as a {CAROUSEL_CATEGORY_LABELS[dup['category']]} "
-                                                    f"story (\"{dup['headline'][:60]}\")"})
-                continue
-            pool.append(s)
-    rank = lambda s: (s["n_established"] > 0, len(s["outlets"]), s["primary"],
-                      s["last_seen"].timestamp() if s.get("last_seen") else 0)
-    eligible, excluded = [], []
+            every.append(s)
+    order = {c: i for i, c in enumerate(CAROUSEL_CATEGORY_ORDER)}
+    every.sort(key=rank, reverse=True)                  # strongest first...
+    every.sort(key=lambda s: order[s["category"]])      # ...within each category (stable sort)
+    pool = []
+    for s in every:
+        dup = next((p for p in pool if _same_event(p, s)), None)
+        if dup:
+            dup["related_states"] = sorted(set(dup["related_states"]) | set(s["related_states"]))
+            log.append({"story": s, "outcome": f"Dropped -- same event as a {CAROUSEL_CATEGORY_LABELS[dup['category']]} "
+                                                f"story (\"{dup['headline'][:60]}\")"})
+            continue
+        pool.append(s)
+    eligible = []
     for s in pool:
         if s["n_established"] == 0 and len(s["outlets"]) < 2:
-            excluded.append(s)
             log.append({"story": s, "outcome": "Excluded -- one source, not an established outlet: cannot be "
                                                "adequately verified (flag for editorial review if important)"})
         else:
             eligible.append(s)
     mains = []
     for cat in CAROUSEL_CATEGORY_ORDER:
-        mains += sorted((s for s in eligible if s["category"] == cat), key=rank, reverse=True)[:CAROUSEL_CANDIDATES_PER_CATEGORY]
-    rest = sorted((s for s in eligible if s not in mains), key=rank, reverse=True)[:CAROUSEL_BRIEF_POOL]
+        in_cat = sorted((s for s in eligible if s["category"] == cat), key=rank, reverse=True)
+        pick = in_cat[:CAROUSEL_CANDIDATES_PER_CATEGORY + (1 if cat == "state" else 0)]
+        if cat == "state":   # at least two from each chosen state, where available
+            for label in [WRAP_STATES[k]["label"] for k in state_keys]:
+                have = [x for x in pick if label in x["related_states"]]
+                pick += [x for x in in_cat if label in x["related_states"] and x not in pick][: max(0, 2 - len(have))]
+        else:                # always include the best AP/Telangana stories for this topic
+            pick += [x for x in in_cat if x["related_states"] and x not in pick][:CAROUSEL_STATE_SHORTLIST_EXTRA]
+        mains += pick
+    rest = sorted((s for s in eligible if s not in mains), key=rank, reverse=True)
+    briefs = rest[:CAROUSEL_BRIEF_POOL]
+    briefs += [x for x in rest if x["related_states"] and x not in briefs][:CAROUSEL_STATE_SHORTLIST_EXTRA]
     for i, s in enumerate(mains, 1):
         s["cid"] = f"C{i}"
-    for i, s in enumerate(rest, 1):
+    for i, s in enumerate(briefs, 1):
         s["cid"] = f"B{i}"
-    return {"mains": mains, "briefs": rest, "log": log}
+    return {"mains": mains, "briefs": briefs, "log": log, "state_keys": state_keys}
 
 
 # Fetching a page the way a normal browser visit would. (News sites often refuse
@@ -4148,7 +4255,7 @@ def _first_published(s: dict) -> str:
 def _carousel_system_prompt(day) -> str:
     lo, hi = CAROUSEL_SUMMARY_WORDS
     return (
-        "You are the editorial assistant for a daily digital news briefing, writing a DRAFT eight-slide carousel for "
+        "You are the editorial assistant for a daily digital news briefing, writing a DRAFT nine-slide carousel for "
         f"{day:%A, %d %B %Y} (India) that a human editor will check and approve. Nothing you write is published, "
         "scheduled or treated as verified until the editor approves it.\n"
         "You are given candidate stories, each with an id ([C3] for main candidates, [B2] for brief candidates), its "
@@ -4159,11 +4266,16 @@ def _carousel_system_prompt(day) -> str:
         "- Prioritise by public significance, impact, novelty and relevance to Indian readers. Prefer stories carried "
         "by several outlets, including established ones.\n"
         "- top_story: the single most significant main candidate.\n"
-        "- slides: for each of national_state, world, business and more, choose 0-3 main candidates FROM THAT SLIDE'S "
-        "categories (national_state: National politics, State developments; world: World affairs; business: Business "
-        "& economy; more: Technology/AI/science, Health & education, Environment & climate, Sports). Adapt to the "
-        "day's news: choose fewer, or none, rather than include something trivial. NEVER manufacture a story to fill "
-        "a slide.\n"
+        "- slides: for each of national, state, world, business and more, choose main candidates FROM THAT SLIDE'S "
+        "categories -- 0-3 each, up to 4 for state (national: National politics -- India-level news NOT specific to "
+        "Andhra Pradesh or Telangana; state: State developments in Andhra Pradesh and Telangana; world: World affairs; "
+        "business: Business & economy; more: Technology/AI/science, Health & education, Environment & climate, Sports). "
+        "Adapt to the day's news: choose fewer, or none, rather than include something trivial. NEVER manufacture a "
+        "story to fill a slide.\n"
+        "- ANDHRA PRADESH AND TELANGANA: candidates marked \"related to\" a state concern Andhra Pradesh or Telangana. "
+        "Readers want the AP/Telangana angle in EVERY section: whenever such a candidate is newsworthy, include it on "
+        "its slide (and on the state slide, cover each state that has news). Write a stories entry for EVERY candidate "
+        "marked related to a state, even ones you don't select.\n"
         "- briefs: 0-5 brief candidates worth a one-line mention.\n"
         "- NEVER use the same underlying event twice anywhere -- top story, slides or briefs.\n"
         "WRITING (for every story you use)\n"
@@ -4187,9 +4299,9 @@ def _carousel_system_prompt(day) -> str:
         "- hashtags: 4-8 relevant, non-misleading hashtags.\n"
         "- takeaway: 1-2 sentences tying the day together WITHOUT new facts or predictions.\n"
         "- follow_prompt: a short, non-pushy line inviting readers to follow for tomorrow's roundup.\n"
-        "- alt_text: accessibility text for each slide, keyed \"1\" to \"8\", describing what the slide shows.\n"
+        "- alt_text: accessibility text for each slide, keyed \"1\" to \"9\", describing what the slide shows.\n"
         "Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
-        '{"top_story": "C1", "slides": {"national_state": [], "world": [], "business": [], "more": []}, "briefs": [], '
+        '{"top_story": "C1", "slides": {"national": [], "state": [], "world": [], "business": [], "more": []}, "briefs": [], '
         '"stories": {"C1": {"headline": "...", "summary": "...", "key_facts": ["..."], "context": "", "status": '
         '"established", "event_date": "", "visual": "..."}, "B1": {"headline": "...", "status": "established"}}, '
         '"hook": "...", "caption": "...", "hashtags": ["#..."], "takeaway": "...", "follow_prompt": "...", '
@@ -4201,7 +4313,7 @@ def _carousel_user_prompt(day, cands: dict) -> str:
     def block(s, full):
         heads = "; ".join(f'"{it["headline"]}" ({it.get("source", "")})' for it in s["items"][:4])
         line = (f"[{s['cid']}] category: {CAROUSEL_CATEGORY_LABELS[s['category']]}"
-                + (f" ({s['state']})" if s.get("state") else "")
+                + (f" | related to: {', '.join(s['related_states'])}" if s.get("related_states") else "")
                 + f" | {len(s['outlets'])} outlet(s), {s['n_established']} established"
                 + (", incl. a primary/official source" if s["primary"] else "")
                 + f" | first published {_first_published(s)}\n   headlines: {heads}")
@@ -4239,7 +4351,8 @@ def generate_carousel_raw(client, model, day, cands: dict) -> dict:
 
 def _template_carousel_raw(cands: dict) -> dict:
     """Without the AI: the strongest candidates, with their own headlines, and
-    every piece of writing left for the editor (and flagged)."""
+    every piece of writing left for the editor (and flagged). (The AP/Telangana
+    coverage rule is applied afterwards, as for the AI's choices.)"""
     mains = cands["mains"]
     rank = lambda s: (s["n_established"] > 0, len(s["outlets"]))
     top = max(mains, key=rank, default=None)
@@ -4315,7 +4428,8 @@ def _carousel_card(s: dict, ai: dict, day, all_names=None) -> dict:
     if st_ == "allegation":
         level += "; ALLEGATION -- attribute to whoever made it; not established"
     visual = _scrub_visual(ai.get("visual"))
-    return {"cid": s["cid"], "category": CAROUSEL_CATEGORY_LABELS[s["category"]] + (f" ({s['state']})" if s.get("state") else ""),
+    return {"cid": s["cid"], "category": CAROUSEL_CATEGORY_LABELS[s["category"]],
+            "related_states": list(s.get("related_states") or []),
             "headline": headline, "summary": summary, "summary_words": words, "key_facts": facts, "context": context,
             "event_date": str(ai.get("event_date") or "").strip() or "Not stated in the sources -- confirm",
             "published": _first_published(s), "sources": s["links"], "verification": level, "flags": flags,
@@ -4363,6 +4477,38 @@ def assemble_carousel(raw: dict, cands: dict, day, used_template: bool, status: 
         used[s["cid"]] = slide_n
         return s
 
+    state_labels = [WRAP_STATES[k]["label"] for k in cands.get("state_keys", [])]
+    rank = lambda s: (s["n_established"] > 0, len(s["outlets"]), s["primary"])
+
+    def ensure_states(entry, sl, labels, pool, as_brief=False):
+        """The AP/Telangana coverage rule: if this section has no story about a state (one of `labels`) but a
+        verifiable one is available, add the best one -- replacing the slide's last pick if it is full."""
+        items = entry["briefs"] if as_brief else entry["cards"]
+        for label in labels:
+            if any(label in it["related_states"] for it in items):
+                continue
+            cand = next((x for x in sorted(pool, key=rank, reverse=True)
+                         if label in x["related_states"] and x["cid"] not in used
+                         and (as_brief or x["category"] in sl.get("cats", []))
+                         and not any(_same_event(by_id[o], x) for o in used)), None)
+            if not cand:
+                continue
+            dropped = ""
+            if len(items) >= sl["max"]:
+                # Make room by replacing the last story that is NOT about AP/Telangana -- never one already
+                # there for a state (e.g. the Telangana story this rule has just added).
+                idx = next((i for i in range(len(items) - 1, -1, -1) if not items[i]["related_states"]), None)
+                if idx is None:
+                    continue
+                gone = items.pop(idx)
+                used.pop(gone["cid"], None)
+                dropped = f", replacing {gone['cid']}"
+            used[cand["cid"]] = sl["n"]
+            card = _carousel_card(cand, stories_ai.get(cand["cid"]), day, all_names)
+            items.append({k: card[k] for k in ("cid", "category", "related_states", "headline", "sources",
+                                               "verification", "published")} if as_brief else card)
+            notes.append(f"Slide {sl['n']}: added {cand['cid']} ({label}){dropped} -- AP/Telangana coverage rule")
+
     slides = []
     top = take(raw.get("top_story"), 2)
     if not top and cands["mains"]:
@@ -4372,7 +4518,8 @@ def assemble_carousel(raw: dict, cands: dict, day, used_template: bool, status: 
         notes.append("Top story chosen by coverage (the AI's choice was missing or invalid)")
     raw_slides = raw.get("slides") if isinstance(raw.get("slides"), dict) else {}
     for sl in CAROUSEL_SLIDES:
-        entry = {"n": sl["n"], "key": sl["key"], "title": sl["title"], "cards": [], "briefs": [], "note": ""}
+        title = sl["title"] + (f": {' & '.join(state_labels)}" if sl["key"] == "state" and state_labels else "")
+        entry = {"n": sl["n"], "key": sl["key"], "title": title, "cards": [], "briefs": [], "note": ""}
         if sl["key"] == "top":
             entry["cards"] = [_carousel_card(top, stories_ai.get(top["cid"]), day, all_names)] if top else []
         elif sl.get("cats"):
@@ -4380,19 +4527,30 @@ def assemble_carousel(raw: dict, cands: dict, day, used_template: bool, status: 
                 s = take(cid, sl["n"], sl["cats"])
                 if s:
                     entry["cards"].append(_carousel_card(s, stories_ai.get(s["cid"]), day, all_names))
+            if sl["key"] != "national":
+                ensure_states(entry, sl, state_labels, cands["mains"])
         elif sl["key"] == "briefs":
             for cid in (raw.get("briefs") or [])[: sl["max"]]:
                 s = take(cid, sl["n"], None, mains_only=False)
                 if s:
                     ai = stories_ai.get(s["cid"]) if isinstance(stories_ai.get(s["cid"]), dict) else {}
                     card = _carousel_card(s, ai, day, all_names)
-                    entry["briefs"].append({k: card[k] for k in ("cid", "category", "headline", "sources", "verification",
-                                                                   "published")})
+                    entry["briefs"].append({k: card[k] for k in ("cid", "category", "related_states", "headline", "sources",
+                                                                   "verification", "published")})
+            if state_labels and not any(b["related_states"] for b in entry["briefs"]):
+                # at least one AP/Telangana item among the briefs, where a verifiable one is left
+                pool = [x for x in cands["briefs"] + cands["mains"] if x["related_states"]]
+                best = next((x for x in sorted(pool, key=rank, reverse=True) if x["cid"] not in used
+                             and not any(_same_event(by_id[o], x) for o in used)), None)
+                if best:
+                    ensure_states(entry, sl, best["related_states"][:1], [best], as_brief=True)
         if sl.get("cats") or sl["key"] in ("top", "briefs"):
             has = entry["cards"] or entry["briefs"]
             avail = sl["key"] == "briefs" and cands["briefs"] or any(s["category"] in sl.get("cats", []) for s in cands["mains"])
             if not has:
-                entry["note"] = ("No story selected for this slide -- the editor may drop the slide or reallocate it."
+                entry["note"] = ("State developments were not requested (national-only carousel) -- drop this slide."
+                                 if sl["key"] == "state" and not state_labels else
+                                 "No story selected for this slide -- the editor may drop the slide or reallocate it."
                                  if avail or sl["key"] == "top" else
                                  "No qualifying stories found for this slide today -- drop or reallocate it.")
         slides.append(entry)
@@ -4423,7 +4581,7 @@ def assemble_carousel(raw: dict, cands: dict, day, used_template: bool, status: 
         if not a:
             heads = "; ".join([c["headline"] for c in sl["cards"]] + [b["headline"] for b in sl["briefs"]])
             a = {1: f"Cover slide: Daily News Wrap-Up for {day:%d %B %Y}. {post['hook']}",
-                 8: f"Closing slide: {post['takeaway'] or 'daily takeaway'} {post['follow_prompt']}"}.get(
+                 CAROUSEL_SLIDES[-1]["n"]: f"Closing slide: {post['takeaway'] or 'daily takeaway'} {post['follow_prompt']}"}.get(
                 sl["n"], f"Slide {sl['n']}, {sl['title']}: {heads or 'no stories'}.")
         alt[sl["n"]] = a
 
@@ -4433,6 +4591,15 @@ def assemble_carousel(raw: dict, cands: dict, day, used_template: bool, status: 
         outcome = (f"Used -- slide {used_ids[s['cid']]}" if s["cid"] in used_ids else "Shortlisted, not selected")
         source_log.append(_log_entry(s, outcome))
     source_log += [_log_entry(e["story"], e["outcome"]) for e in cands["log"]]
+    if state_labels:
+        cov = []
+        for sl in slides:
+            if sl["key"] in ("cover", "takeaway"):
+                continue
+            items = sl["cards"] + sl["briefs"]
+            names = sorted({x for it in items for x in it["related_states"]})
+            cov.append(f"slide {sl['n']}: {', '.join(names) if names else 'none found'}")
+        status["AP/Telangana coverage"] = "; ".join(cov)
     return {"day": day, "generated": f"{utc_now() + IST_OFFSET:%Y-%m-%d %H:%M} IST", "slides": slides, "post": post,
             "post_flags": post_flags, "alt_text": alt, "source_log": source_log, "notes": notes, "status": status,
             "used_template": used_template, "notice": CAROUSEL_DRAFT_NOTICE, "checklist": CAROUSEL_CHECKLIST}
@@ -4452,13 +4619,15 @@ def gather_daily_carousel(day=None, state_choice: str = "both", client=None, mod
     state_keys = [] if str(state_choice).lower() in ("none", "no", "") else resolve_wrap_states(state_choice)
     print(f"  - Gathering the day's news across {len(CAROUSEL_CATEGORIES) + len(state_keys)} categories...")
     by_cat, status = gather_carousel_news(day, state_keys)
-    cands = build_carousel_candidates(by_cat)
+    cands = build_carousel_candidates(by_cat, state_keys)
     status["Shortlist"] = (f"{len(cands['mains'])} main candidates, {len(cands['briefs'])} brief candidates, "
                            f"{sum(1 for e in cands['log'] if e['outcome'].startswith('Excluded'))} excluded as "
                            f"unverifiable, {sum(1 for e in cands['log'] if e['outcome'].startswith('Dropped'))} "
                            "cross-category duplicates dropped")
     print(f"  - Fetching article text for {len(cands['mains'])} shortlisted stories...")
     got = attach_article_text(cands["mains"])
+    for s in cands["mains"]:       # the article text can reveal a state link the headline didn't show
+        _tag_story(s, state_keys)
     why = ", ".join(f"{n} {label}" for key, label in (("unresolved", "Google News links not resolvable"),
                                                      ("blocked", "sites refused or unreachable"),
                                                      ("unreadable", "pages without readable text"),
@@ -4516,6 +4685,8 @@ def carousel_slide_markdown(c: dict, sl: dict) -> list:
               "- **Key facts:**"] + [f"  - {f}" for f in card["key_facts"]]
         if card["context"]:
             L.append(f"- **Context:** {card['context']}")
+        if card["related_states"]:
+            L.append(f"- **\U0001F4CD Related to:** {', '.join(card['related_states'])}")
         L += [f"- **Category:** {card['category']}",
               f"- **Event date:** {card['event_date']} \u00b7 **First published:** {card['published']}",
               "- **Sources:** " + " \u00b7 ".join(_md_src(r) for r in card["sources"]),
@@ -4525,7 +4696,8 @@ def carousel_slide_markdown(c: dict, sl: dict) -> list:
             L += ["- **\u26a0\ufe0f Editor flags:**"] + [f"  - {f}" for f in card["flags"]]
         L.append("")
     for b in sl["briefs"]:
-        L.append(f"- **{b['headline']}** \u2014 " + " \u00b7 ".join(_md_src(r) for r in b["sources"][:3])
+        L.append(f"- **{b['headline']}**" + (f" \U0001F4CD {', '.join(b['related_states'])}" if b["related_states"] else "")
+                 + " \u2014 " + " \u00b7 ".join(_md_src(r) for r in b["sources"][:3])
                  + f"  \n  _{b['verification']}_")
     if sl["briefs"]:
         L.append("")
@@ -4571,7 +4743,8 @@ def print_carousel(c: dict) -> None:
         if sl["note"]:
             print(_wrap(sl["note"]))
         for card in sl["cards"]:
-            print(_wrap(f"\u2022 {card['headline']}", 70, "  "))
+            print(_wrap(f"\u2022 {card['headline']}" + (f"  [{', '.join(card['related_states'])}]" if card["related_states"] else ""),
+                        70, "  "))
             print(_wrap(f"Summary ({card['summary_words']} words): {card['summary'] or '(editor to write)'}", 70, "    "))
             for f in card["key_facts"]:
                 print(_wrap(f"- {f}", 70, "      "))
@@ -4645,6 +4818,8 @@ def save_carousel_pdf(c: dict) -> str:
             items += [f"<b>Key fact:</b> {xml_escape(f)}" for f in card["key_facts"]]
             if card["context"]:
                 items.append(f"<b>Context:</b> {xml_escape(card['context'])}")
+            if card["related_states"]:
+                items.append(f"<b>Related to:</b> {xml_escape(', '.join(card['related_states']))}")
             items += [f"<b>Event date:</b> {xml_escape(card['event_date'])} \u00b7 <b>First published:</b> {xml_escape(card['published'])}",
                       f"<b>Sources:</b> {links(card['sources'])}",
                       f"<b>Verification status:</b> {xml_escape(card['verification'])}",
@@ -4920,7 +5095,7 @@ def main():
     ap.add_argument("--no-brave", action="store_true")
     ap.add_argument("--no-social-news", action="store_true")
     ap.add_argument("--carousel", nargs="?", const="both", default=None, metavar="STATES",
-                    help="DRAFT eight-slide daily news carousel (national, state, world, business, tech/science/"
+                    help="DRAFT nine-slide daily news carousel (national, AP/Telangana, world, business, tech/science/"
                          "health/environment/sports). STATES for the state slide: both (default), ap, telangana or "
                          "none. Use --date for another day; --save/--pdf to keep it")
     ap.add_argument("--wrap-party", default="", metavar="PARTY",
