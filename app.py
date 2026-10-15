@@ -736,7 +736,8 @@ with st.sidebar:
         st.session_state.trigger_prompt = f"Daily news carousel, {car_day:%d %b %Y}"
         st.session_state.trigger_carousel = (car_day, CAROUSEL_STATE_CHOICES[car_states_label])
         st.rerun()
-    st.caption("An eight-slide DRAFT for editorial review -- nothing is published or treated as verified. "
+    st.caption("A nine-slide DRAFT for editorial review, with separate National and AP/Telangana slides and the "
+               "AP/Telangana angle in every section -- nothing is published or treated as verified. "
                "Or type \"carousel\" in the chat box.")
 
     st.divider()
@@ -850,7 +851,7 @@ with st.expander("ℹ️ How this works"):
         "5. For a **news wrap-up of Andhra Pradesh and/or Telangana** -- one day or a date range of up to 31 days -- "
         "use the wrap-up section at the top of the sidebar, or type \"daily wrap\" / \"weekly wrap\" in the chat box. "
         "Set **Focus** to a party (or type e.g. \"BRS wrap\") for a wrap-up about that party in these states.\n"
-        "6. For an eight-slide **daily news carousel** (a DRAFT for editorial review, with sources, verification "
+        "6. For a nine-slide **daily news carousel** (a DRAFT for editorial review, with sources, verification "
         "statuses, caption, hashtags and alt text), use the carousel section in the sidebar or type \"carousel\".\n\n"
         "Paid sources (Sarvam, Brave, X) use real API quota on every new search. "
         "Use the **Free sources only** preset to avoid that, apart from the Sarvam summary."
