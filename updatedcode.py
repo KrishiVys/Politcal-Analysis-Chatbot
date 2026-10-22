@@ -149,6 +149,7 @@ import json
 import base64
 import hashlib
 import time
+import threading
 import argparse
 import textwrap
 from datetime import datetime, timedelta, timezone
@@ -1777,14 +1778,14 @@ def extract_json_object(text: str) -> "dict | None":
     return best[1] if best else None
 
 
-def _call_sarvam(client, model, messages):
+def _call_sarvam(client, model, messages, max_tokens: int = 6000):
     try:
         return client.chat.completions(
-            model=model, messages=messages, temperature=0.2, max_tokens=6000,
+            model=model, messages=messages, temperature=0.2, max_tokens=max_tokens,
             reasoning_effort=None,  # direct JSON answer; thinking tokens were eating the budget
         )
     except TypeError:
-        return client.chat.completions(model=model, messages=messages, temperature=0.2, max_tokens=6000)
+        return client.chat.completions(model=model, messages=messages, temperature=0.2, max_tokens=max_tokens)
 
 
 def generate_narrative(client, model, name, window_label, wiki, data, subject_type: str = "politician",
@@ -2240,7 +2241,7 @@ def _pdf_link(url: str, text: str) -> str:
     text = xml_escape(text) if text else xml_escape(url)
     if not url:
         return text
-    return f'<link href="{xml_escape(url)}" color="#1a5fb4">{text}</link>'
+    return f'<link href="{xml_escape(url, {chr(34): "&quot;"})}" color="#1a5fb4">{text}</link>'
 
 
 def save_pdf(name, wiki, data, narrative, start_date, end_date, status, used_template,
@@ -3923,33 +3924,67 @@ def _carousel_state_queries(state_keys: list) -> list:
     return out
 
 
+CAROUSEL_SEARCH_WORKERS = 8
+CAROUSEL_SEARCH_DEADLINE = 25    # seconds for ALL searches; any still running after this are skipped
+CAROUSEL_GDELT_CATEGORIES = ("national", "world")   # GDELT is slow (one request per ~5s): only where it adds most
+CAROUSEL_GDELT_DEADLINE = 12                        # seconds; GDELT results arriving later are skipped
+
+
 def gather_carousel_news(day, state_keys: list) -> tuple:
-    """({category: [articles]}, status) for one IST calendar day: per category,
-    one Google News and one GDELT search (GDELT spaced out), plus -- for each
-    topic -- one AP/Telangana-focused Google News search, and the chosen
-    states' general news for 'state developments'."""
+    """({category: [articles]}, status) for one IST calendar day. All Google
+    News searches run AT THE SAME TIME: one per category, one AP/Telangana search
+    per topic, and the chosen states' general news. GDELT (which only allows a
+    request every few seconds) runs in the background for a few categories and
+    is cut off at CAROUSEL_GDELT_DEADLINE, so it can never hold the rest up."""
+    from concurrent.futures import ThreadPoolExecutor
+    started = time.monotonic()
     start, end = ist_day_window(day)
     window = f"after:{(day - timedelta(days=1)):%Y-%m-%d} before:{(day + timedelta(days=1)):%Y-%m-%d}"
     jobs = [(k, l, gq, dq, None) for k, l, gq, dq in CAROUSEL_CATEGORIES]
-    jobs += [("state", label, gq, dq, sk) for sk, label, gq, dq in _carousel_state_queries(state_keys)]
+    jobs += [("state", label, gq, None, sk) for sk, label, gq, _dq in _carousel_state_queries(state_keys)]
     if state_keys:
         names = "(" + " OR ".join(_CAROUSEL_STATE_NAMES[k][1:-1] for k in state_keys) + ")"
         # Their results are placed by what each headline is about, NOT by which search found them: Google
         # matches words anywhere in an article, so the "world" search can return a story that isn't world news.
         jobs += [("state_topic", f"{CAROUSEL_CATEGORY_LABELS[k]} (AP/Telangana)", f"{terms} {names}", None, None)
                  for k, terms in CAROUSEL_STATE_TOPIC_TERMS.items()]
-    by_cat, status = {}, {}
-    for key, label, gq, dq, state_key in jobs:
-        got, fails = [], []
-        try:
-            got += get_google_news_fallback(f"{gq} {window}", 100, start, end)
-        except Exception as e:
-            fails.append(f"Google News ({_short_error(e)})")
-        if dq:
+
+    gdelt_jobs = [j for j in jobs if j[3] and j[0] in CAROUSEL_GDELT_CATEGORIES]
+    gdelt_out = {}
+
+    def run_gdelt():
+        for _key, label, _gq, dq, _sk in gdelt_jobs:
             try:
-                got += _gdelt_throttled(dq, 75, start, end)
+                gdelt_out[label] = (_gdelt_throttled(dq, 75, start, end), "")
             except Exception as e:
-                fails.append(f"GDELT ({_short_error(e)})")
+                gdelt_out[label] = ([], f"GDELT ({_short_error(e)})")
+
+    worker = threading.Thread(target=run_gdelt, daemon=True)
+    worker.start()
+
+    def google(job):
+        try:
+            return get_google_news_fallback(f"{job[2]} {window}", 100, start, end), ""
+        except Exception as e:
+            return [], f"Google News ({_short_error(e)})"
+
+    from concurrent.futures import wait as _wait
+    pool = ThreadPoolExecutor(max_workers=CAROUSEL_SEARCH_WORKERS)
+    futures = [pool.submit(google, j) for j in jobs]
+    _wait(futures, timeout=CAROUSEL_SEARCH_DEADLINE)
+    google_out = [f.result() if f.done() else ([], "Google News (timed out -- skipped)") for f in futures]
+    pool.shutdown(wait=False, cancel_futures=True)
+    worker.join(timeout=max(0.0, CAROUSEL_GDELT_DEADLINE - (time.monotonic() - started)))
+    gdelt_now = dict(gdelt_out)
+
+    by_cat, status = {}, {}
+    for (key, label, _gq, dq, state_key), (got, fail) in zip(jobs, google_out):
+        fails = [fail] if fail else []
+        if (key, label, _gq, dq, state_key) in gdelt_jobs:
+            g_got, g_fail = gdelt_now.get(label, ([], "GDELT skipped (too slow today)"))
+            got = got + g_got
+            if g_fail:
+                fails.append(g_fail)
         got = _dedupe_articles(_filter_by_date(got, start, end))
         if state_key:   # a state search: drop stories clearly about another state or country
             got = [a for a in got if not is_off_state(a.get("headline", ""), state_key)]
@@ -3958,8 +3993,7 @@ def gather_carousel_news(day, state_keys: list) -> tuple:
             if state_key:
                 a["state_origin"] = WRAP_STATES[state_key]["label"]
         by_cat.setdefault(key, []).extend(got)
-        status[f"{label} news"] = f"{len(got)} articles" + ("; failed: " + "; ".join(fails) if fails else "")
-        time.sleep(0.5)
+        status[f"{label} news"] = f"{len(got)} articles" + ("; " + "; ".join(fails) if fails else "")
     return by_cat, status
 
 
@@ -4044,7 +4078,9 @@ def build_carousel_candidates(by_cat: dict, state_keys=()) -> dict:
         pool.append(s)
     eligible = []
     for s in pool:
-        if s["n_established"] == 0 and len(s["outlets"]) < 2:
+        if not s["links"]:
+            log.append({"story": s, "outcome": "Excluded -- no source link available"})
+        elif s["n_established"] == 0 and len(s["outlets"]) < 2:
             log.append({"story": s, "outcome": "Excluded -- one source, not an established outlet: cannot be "
                                                "adequately verified (flag for editorial review if important)"})
         else:
@@ -4106,7 +4142,7 @@ def _gnews_from_batchexecute(gid: str):
     (read the article page's signature and timestamp, then call its decoding endpoint)."""
     if BeautifulSoup is None:
         return None
-    r = requests.get(f"https://news.google.com/rss/articles/{gid}", headers=ARTICLE_HEADERS, timeout=10)
+    r = requests.get(f"https://news.google.com/rss/articles/{gid}", headers=ARTICLE_HEADERS, timeout=6)
     soup = BeautifulSoup(r.text, "html.parser")
     node = soup.find(attrs={"data-n-a-sg": True, "data-n-a-ts": True})
     if not node:
@@ -4115,7 +4151,7 @@ def _gnews_from_batchexecute(gid: str):
     inner = ('["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],'
              f'"X","X",1,[1,1,1],1,1,null,0,0,null,0],"{gid}",{ts},"{sig}"]')
     body = "f.req=" + quote(json.dumps([[["Fbv4je", inner, None, "generic"]]]))
-    r2 = requests.post("https://news.google.com/_/DotsSplashUi/data/batchexecute", data=body, timeout=10,
+    r2 = requests.post("https://news.google.com/_/DotsSplashUi/data/batchexecute", data=body, timeout=6,
                        headers={**ARTICLE_HEADERS, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"})
     chunk = r2.text.split("\n\n", 1)[1]
     parsed = json.loads(chunk)[:-2]
@@ -4192,7 +4228,7 @@ def fetch_article_text(url: str, max_chars: int = 1500) -> tuple:
     if not target:
         return "", "the Google News link could not be resolved to the publisher's page"
     try:
-        r = requests.get(target, headers=ARTICLE_HEADERS, timeout=10)
+        r = requests.get(target, headers=ARTICLE_HEADERS, timeout=7, stream=True)
     except Exception as e:
         return "", f"the publisher's site could not be reached ({_short_error(e)})"
     if r.status_code in (401, 402, 403, 429, 451):
@@ -4200,47 +4236,80 @@ def fetch_article_text(url: str, max_chars: int = 1500) -> tuple:
     if r.status_code >= 400:
         return "", f"the page returned HTTP {r.status_code}"
     try:
-        text = _article_text_from_html(r.text or "", max_chars)
+        text = _article_text_from_html(_read_capped(r), max_chars)
     except Exception:
         text = ""
     return (text, "") if text else ("", "the page had no readable article text (it may be paywalled or load by script)")
 
 
+FETCH_MAX_BYTES = 1_500_000   # stop reading a page after this much...
+FETCH_MAX_SECONDS = 10        # ...or after this long, whatever the server does
+
+
+def _read_capped(r) -> str:
+    """A response's text, read in chunks and cut off at FETCH_MAX_BYTES or FETCH_MAX_SECONDS."""
+    chunks_of = getattr(r, "iter_content", None)
+    if chunks_of is None:
+        return r.text or ""
+    started, size, parts = time.monotonic(), 0, []
+    try:
+        for chunk in chunks_of(chunk_size=65536):
+            if chunk:
+                parts.append(chunk)
+                size += len(chunk)
+            if size >= FETCH_MAX_BYTES or time.monotonic() - started > FETCH_MAX_SECONDS:
+                break
+    finally:
+        close = getattr(r, "close", None)
+        if close:
+            close()
+    return b"".join(parts).decode(getattr(r, "encoding", None) or "utf-8", errors="replace")
+
+
 CAROUSEL_THIN_TEXT = 300   # fewer characters than this = only a short description was available
 
 
-def attach_article_text(stories: list, workers: int = 6, tries: int = 2) -> dict:
-    """For each story, fetch an excerpt from up to `tries` of its links (direct
-    publisher links first, then resolved Google News links), in parallel across
-    stories. A resolved Google News link replaces the redirect link in the
-    story's sources, so the editor gets the publisher's own URL. Returns counts."""
-    from concurrent.futures import ThreadPoolExecutor
+CAROUSEL_FETCH_WORKERS = 16
+CAROUSEL_FETCH_DEADLINE = 25   # seconds for all article downloads (they run while the AI chooses)
 
-    def one(s):
-        s["excerpt"], s["excerpt_source"], s["excerpt_note"] = "", "", ""
-        problems = []
-        for rec in sorted(s["links"], key=lambda r: not r["direct"])[:tries]:
-            text, problem = fetch_article_text(rec["url"])
-            if not rec["direct"]:
-                resolved = _GNEWS_CACHE.get((_GNEWS_RX.match(rec["url"]) or [None, None])[1])
-                if resolved:
-                    rec["url"], rec["direct"] = resolved, True
-            if text:
-                s["excerpt"], s["excerpt_source"] = text, rec["name"]
-                return "ok"
-            problems.append(problem)
-        s["excerpt_note"] = problems[0] if problems else "no link available"
-        return s["excerpt_note"]
 
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        results = list(ex.map(one, stories))
-    counts = {"fetched": results.count("ok"), "total": len(stories)}
+def _fetch_story_text(s: dict, tries: int = 2) -> str:
+    """Fetch an excerpt for one story from up to `tries` of its links (direct
+    publisher links first, then resolved Google News links). A resolved Google
+    News link replaces the redirect link in the story's sources, so the editor
+    gets the publisher's own URL. Returns "ok" or the reason it failed."""
+    s["excerpt"], s["excerpt_source"], s["excerpt_note"] = "", "", ""
+    problems = []
+    for rec in sorted(s["links"], key=lambda r: not r["direct"])[:tries]:
+        text, problem = fetch_article_text(rec["url"])
+        if not rec["direct"]:
+            resolved = _GNEWS_CACHE.get((_GNEWS_RX.match(rec["url"]) or [None, None])[1])
+            if resolved:
+                rec["url"], rec["direct"] = resolved, True
+        if text:
+            s["excerpt"], s["excerpt_source"] = text, rec["name"]
+            return "ok"
+        problems.append(problem)
+    s["excerpt_note"] = problems[0] if problems else "no link available"
+    return s["excerpt_note"]
+
+
+def _fetch_counts(results: list) -> dict:
+    counts = {"fetched": results.count("ok"), "total": len(results)}
     for r in results:
         if r != "ok":
             key = ("unresolved" if "Google News" in r else "blocked" if "refused" in r or "reached" in r
                    else "unreadable" if "readable" in r or "HTTP" in r else "other")
             counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def attach_article_text(stories: list, workers: int = CAROUSEL_FETCH_WORKERS, tries: int = 2) -> dict:
+    """Fetch an excerpt for every story, in parallel. Returns counts."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        results = list(ex.map(lambda st_: _fetch_story_text(st_, tries), stories))
+    return _fetch_counts(results)
 
 
 def _story_material(s: dict) -> str:
@@ -4252,17 +4321,19 @@ def _first_published(s: dict) -> str:
     return f"{_ist(min(dts)):%d %b %Y, %H:%M} IST" if dts else "unknown"
 
 
-def _carousel_system_prompt(day) -> str:
-    lo, hi = CAROUSEL_SUMMARY_WORDS
+def _carousel_intro(day) -> str:
+    return ("You are the editorial assistant for a daily digital news briefing, preparing a DRAFT nine-slide carousel "
+            f"for {day:%A, %d %B %Y} (India) that a human editor will check and approve. Nothing you write is "
+            "published, scheduled or treated as verified until the editor approves it.\n")
+
+
+def _carousel_select_prompt(day) -> str:
     return (
-        "You are the editorial assistant for a daily digital news briefing, writing a DRAFT nine-slide carousel for "
-        f"{day:%A, %d %B %Y} (India) that a human editor will check and approve. Nothing you write is published, "
-        "scheduled or treated as verified until the editor approves it.\n"
-        "You are given candidate stories, each with an id ([C3] for main candidates, [B2] for brief candidates), its "
-        "category, how many separate outlets reported it and how many of those are established outlets, when it was "
-        "first published (IST), every outlet's headline, and -- where available -- an excerpt of the article text. "
+        _carousel_intro(day)
+        + "STEP 1 OF 3 -- CHOOSE THE STORIES. You are given candidate stories, each with an id ([C3] for main "
+        "candidates, [B2] for brief candidates), its category, how many separate outlets reported it and how many of "
+        "those are established outlets, when it was first published (IST), and every outlet's headline. "
         "THAT MATERIAL IS ALL YOU KNOW.\n"
-        "SELECTION\n"
         "- Prioritise by public significance, impact, novelty and relevance to Indian readers. Prefer stories carried "
         "by several outlets, including established ones.\n"
         "- top_story: the single most significant main candidate.\n"
@@ -4274,11 +4345,22 @@ def _carousel_system_prompt(day) -> str:
         "story to fill a slide.\n"
         "- ANDHRA PRADESH AND TELANGANA: candidates marked \"related to\" a state concern Andhra Pradesh or Telangana. "
         "Readers want the AP/Telangana angle in EVERY section: whenever such a candidate is newsworthy, include it on "
-        "its slide (and on the state slide, cover each state that has news). Write a stories entry for EVERY candidate "
-        "marked related to a state, even ones you don't select.\n"
+        "its slide (and on the state slide, cover each state that has news).\n"
         "- briefs: 0-5 brief candidates worth a one-line mention.\n"
         "- NEVER use the same underlying event twice anywhere -- top story, slides or briefs.\n"
-        "WRITING (for every story you use)\n"
+        "Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
+        '{"top_story": "C1", "slides": {"national": [], "state": [], "world": [], "business": [], "more": []}, '
+        '"briefs": []}'
+    )
+
+
+def _carousel_write_prompt(day) -> str:
+    lo, hi = CAROUSEL_SUMMARY_WORDS
+    return (
+        _carousel_intro(day)
+        + "STEP 2 OF 3 -- WRITE THE STORIES. You are given a few chosen stories, each with an id, every outlet's "
+        "headline and -- where available -- an excerpt of the article text. THAT MATERIAL IS ALL YOU KNOW. Write an "
+        "entry for EVERY id given; do not skip any.\n"
         f"- headline: concise and accurate, at most {CAROUSEL_HEADLINE_MAX_WORDS} words; no sensationalism, clickbait "
         "or question headlines.\n"
         f"- summary: {lo}-{hi} words, from the material only. If the material is too thin for {lo} words, write fewer "
@@ -4292,61 +4374,203 @@ def _carousel_system_prompt(day) -> str:
         "assume it is the publication date.\n"
         "- visual: describe a suitable image or graphic (e.g. \"map of the affected districts\", \"official handout "
         "photo of the cabinet meeting\"). Never name a photographer, agency or credit.\n"
-        "- Never invent facts, quotes, statistics, sources or image credits. No partisan framing, no predictions.\n"
-        "POST COPY\n"
+        "- Never invent facts, quotes, statistics, sources or image credits. No partisan framing, no predictions. Do "
+        "not add outlet names or citations -- sources are attached automatically.\n"
+        "Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
+        '{"stories": {"C1": {"headline": "...", "summary": "...", "key_facts": ["..."], "context": "", '
+        '"status": "established", "event_date": "", "visual": "..."}}}'
+    )
+
+
+def _carousel_post_prompt(day) -> str:
+    n = CAROUSEL_SLIDES[-1]["n"]
+    return (
+        _carousel_intro(day)
+        + "STEP 3 OF 3 -- POST COPY. You are given the carousel's slides and the headlines on each. THAT MATERIAL IS "
+        "ALL YOU KNOW: do not add facts that are not in those headlines.\n"
         "- hook: an accurate opening line under 15 words; not sensational.\n"
         "- caption: a platform-appropriate caption of 60-120 words describing the roundup neutrally.\n"
         "- hashtags: 4-8 relevant, non-misleading hashtags.\n"
         "- takeaway: 1-2 sentences tying the day together WITHOUT new facts or predictions.\n"
         "- follow_prompt: a short, non-pushy line inviting readers to follow for tomorrow's roundup.\n"
-        "- alt_text: accessibility text for each slide, keyed \"1\" to \"9\", describing what the slide shows.\n"
-        "Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
-        '{"top_story": "C1", "slides": {"national": [], "state": [], "world": [], "business": [], "more": []}, "briefs": [], '
-        '"stories": {"C1": {"headline": "...", "summary": "...", "key_facts": ["..."], "context": "", "status": '
-        '"established", "event_date": "", "visual": "..."}, "B1": {"headline": "...", "status": "established"}}, '
-        '"hook": "...", "caption": "...", "hashtags": ["#..."], "takeaway": "...", "follow_prompt": "...", '
+        f"- alt_text: accessibility text for each slide, keyed \"1\" to \"{n}\", describing what the slide shows.\n"
+        "Never call anything verified. Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
+        '{"hook": "...", "caption": "...", "hashtags": ["#..."], "takeaway": "...", "follow_prompt": "...", '
         '"alt_text": {"1": "..."}}'
     )
 
 
-def _carousel_user_prompt(day, cands: dict) -> str:
-    def block(s, full):
-        heads = "; ".join(f'"{it["headline"]}" ({it.get("source", "")})' for it in s["items"][:4])
-        line = (f"[{s['cid']}] category: {CAROUSEL_CATEGORY_LABELS[s['category']]}"
-                + (f" | related to: {', '.join(s['related_states'])}" if s.get("related_states") else "")
-                + f" | {len(s['outlets'])} outlet(s), {s['n_established']} established"
-                + (", incl. a primary/official source" if s["primary"] else "")
-                + f" | first published {_first_published(s)}\n   headlines: {heads}")
-        if full and s.get("excerpt"):
-            line += f"\n   excerpt ({s['excerpt_source']}): \"{s['excerpt'][:900]}\""
-        return line
+def _carousel_story_block(s: dict, with_excerpt: bool) -> str:
+    heads = "; ".join(f'"{it["headline"]}" ({it.get("source", "")})' for it in s["items"][:4])
+    line = (f"[{s['cid']}] category: {CAROUSEL_CATEGORY_LABELS[s['category']]}"
+            + (f" | related to: {', '.join(s['related_states'])}" if s.get("related_states") else "")
+            + f" | {len(s['outlets'])} outlet(s), {s['n_established']} established"
+            + (", incl. a primary/official source" if s["primary"] else "")
+            + f" | first published {_first_published(s)}\n   headlines: {heads}")
+    if with_excerpt and s.get("excerpt"):
+        line += f"\n   excerpt ({s['excerpt_source']}): \"{s['excerpt'][:900]}\""
+    return line
+
+
+def _carousel_select_user(day, cands: dict) -> str:
     L = [f"DATE: {day:%A, %d %B %Y} (India)", "", "MAIN CANDIDATES"]
-    L += [block(s, True) for s in cands["mains"]] or ["(none)"]
-    L += ["", "BRIEF CANDIDATES"] + ([block(s, False) for s in cands["briefs"]] or ["(none)"])
-    L += ["", "Write the JSON carousel now, based only on the above."]
+    L += [_carousel_story_block(s, False) for s in cands["mains"]] or ["(none)"]
+    L += ["", "BRIEF CANDIDATES"] + ([_carousel_story_block(s, False) for s in cands["briefs"]] or ["(none)"])
+    L += ["", "Choose now: reply with the JSON object only."]
     return "\n".join(L)
 
 
-def generate_carousel_raw(client, model, day, cands: dict) -> dict:
-    messages = [{"role": "system", "content": _carousel_system_prompt(day)},
-                {"role": "user", "content": _carousel_user_prompt(day, cands)}]
-    last_error = "no response"
-    for attempt in range(2):
-        response = _call_sarvam(client, model, messages)
+def _carousel_write_user(day, stories: list) -> str:
+    L = [f"DATE: {day:%A, %d %B %Y} (India)", "", "STORIES TO WRITE"] + [_carousel_story_block(s, True) for s in stories]
+    L += ["", f"Write entries for these ids: {', '.join(s['cid'] for s in stories)}. Reply with the JSON object only."]
+    return "\n".join(L)
+
+
+def _carousel_post_user(day, plan: dict) -> str:
+    L = [f"DATE: {day:%A, %d %B %Y} (India)", ""]
+    for sl in plan["slides"]:
+        heads = [c["headline"] for c in sl["cards"]] + [b["headline"] for b in sl["briefs"]]
+        L.append(f"Slide {sl['n']} -- {sl['title']}: " + ("; ".join(heads) if heads else "(no stories)"))
+    L += ["", "Write the post copy now: reply with the JSON object only."]
+    return "\n".join(L)
+
+
+_RETRYABLE = ("429", "rate", "too many", "timeout", "timed out", "temporar", "502", "503", "504", "overload",
+              "connection", "unavailable")
+
+
+def _carousel_ai_json(client, model, system: str, user: str, required: str, max_tokens: int) -> dict:
+    """One small AI request. Rate limits and temporary errors are retried with a
+    short pause (up to 3 tries); an unusable reply gets one corrective retry.
+    Raises if no usable JSON comes back."""
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    last_error, corrected = "no response", False
+    for attempt in range(3):
+        try:
+            response = _call_sarvam(client, model, messages, max_tokens=max_tokens)
+        except Exception as e:
+            last_error = _short_error(e)
+            if attempt < 2 and any(k in str(e).lower() for k in _RETRYABLE):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise
         message = response.choices[0].message
         content = getattr(message, "content", None) or getattr(message, "reasoning_content", None)
         if content:
-            content = re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.MULTILINE).strip()
+            content = re.sub(r"^```(?:json)?|```$", "", str(content).strip(), flags=re.MULTILINE).strip()
             parsed = extract_json_object(content)
-            if parsed and isinstance(parsed.get("stories"), dict):
+            if isinstance(parsed, dict) and required in parsed:
                 return parsed
-            last_error = "response did not contain the expected JSON"
+            last_error = f"response did not contain '{required}'"
         else:
             last_error = "empty response"
-        if attempt == 0:
-            messages = messages[:2] + [{"role": "user", "content":
-                f"Your previous reply was unusable ({last_error}). Reply again with ONLY the JSON object."}]
+        if corrected:
+            break
+        corrected = True
+        messages = messages[:2] + [{"role": "user", "content":
+            f"Your previous reply was unusable ({last_error}). Reply again with ONLY the JSON object."}]
     raise ValueError(last_error)
+
+
+_ID_RX = re.compile(r"\b([CB])\s*-?\s*(\d+)\b", re.I)
+
+
+def _norm_ids(v) -> list:
+    """Story ids from whatever shape the AI used: ["C1"], "C1", "c1, C2", ["[C3]"], 4 ..."""
+    if v is None:
+        return []
+    items = v if isinstance(v, list) else list(v.values()) if isinstance(v, dict) else [v]
+    out = []
+    for x in items:
+        for m in _ID_RX.finditer(str(x)):
+            cid = m.group(1).upper() + m.group(2)
+            if cid not in out:
+                out.append(cid)
+    return out
+
+
+def _norm_selection(sel) -> dict:
+    sel = sel if isinstance(sel, dict) else {}
+    slides = sel.get("slides") if isinstance(sel.get("slides"), dict) else {}
+    return {"top_story": (_norm_ids(sel.get("top_story")) or [""])[0],
+            "slides": {k: _norm_ids(slides.get(k)) for k in CAROUSEL_STORY_SLIDES},
+            "briefs": _norm_ids(sel.get("briefs"))}
+
+
+def _norm_post(raw) -> dict:
+    raw = raw if isinstance(raw, dict) else {}
+    tags = raw.get("hashtags")
+    if isinstance(tags, str):
+        tags = re.split(r"[\s,]+", tags)
+    alt = raw.get("alt_text")
+    if isinstance(alt, list):
+        alt = {str(i): v for i, v in enumerate(alt, 1)}
+    out = {k: _as_text(raw.get(k)) for k in ("hook", "caption", "takeaway", "follow_prompt") if raw.get(k)}
+    if isinstance(tags, list):
+        out["hashtags"] = [str(t) for t in tags if str(t).strip()]
+    if isinstance(alt, dict):
+        out["alt_text"] = {str(k).strip(): _as_text(v) for k, v in alt.items()}
+    return out
+
+
+def _as_text(v) -> str:
+    if isinstance(v, list):
+        return " ".join(_as_text(x) for x in v)
+    if isinstance(v, dict):
+        return " ".join(_as_text(x) for x in v.values())
+    return " ".join(str(v if v is not None else "").split())
+
+
+CAROUSEL_WRITE_BATCH = 3      # stories per writing request: small replies, never cut off
+CAROUSEL_AI_WORKERS = 3       # writing requests run in parallel (kept modest to avoid rate limits)
+CAROUSEL_SELECT_TIMEOUT = 60  # seconds; if choosing takes longer, stories are chosen by coverage
+CAROUSEL_WRITE_DEADLINE = 90  # seconds for all writing + post copy; stories not written by then use an extract
+
+
+def write_carousel_stories(client, model, day, stories: list, deadline=None) -> tuple:
+    """({cid: entry}, problems): the chosen stories written in parallel batches;
+    any the AI skipped get one more, single-story try. Everything stops at
+    `deadline` (a time.monotonic() value): stories not written by then fall
+    back to an extract of the article, so a slow AI can never stall the carousel."""
+    from concurrent.futures import ThreadPoolExecutor, wait
+    deadline = deadline or (time.monotonic() + CAROUSEL_WRITE_DEADLINE)
+    written, problems = {}, []
+
+    def batch(group):
+        try:
+            got = _carousel_ai_json(client, model, _carousel_write_prompt(day), _carousel_write_user(day, group),
+                                    "stories", 600 + 450 * len(group))
+        except Exception as e:
+            problems.append(_short_error(e))
+            return {}
+        out = {}
+        for k, v in (got.get("stories") or {}).items() if isinstance(got.get("stories"), dict) else []:
+            ids = _norm_ids(k)
+            if ids and isinstance(v, dict):
+                out[ids[0]] = v
+        return out
+
+    def summary_of(cid):
+        return _as_text((written.get(cid) or {}).get("summary"))
+
+    pool = ThreadPoolExecutor(max_workers=CAROUSEL_AI_WORKERS)
+    try:
+        groups = [stories[i:i + CAROUSEL_WRITE_BATCH] for i in range(0, len(stories), CAROUSEL_WRITE_BATCH)]
+        futures = [pool.submit(batch, g) for g in groups]
+        done, late = wait(futures, timeout=max(0.0, deadline - time.monotonic()))
+        for f in done:
+            written.update(f.result())
+        if late:
+            problems.append(f"{len(late)} writing request(s) ran out of time")
+        missing = [x for x in stories if not summary_of(x["cid"])]
+        if missing and deadline - time.monotonic() > 3:
+            futures = [pool.submit(batch, [x]) for x in missing]
+            done, late = wait(futures, timeout=max(0.0, deadline - time.monotonic()))
+            for f in done:
+                written.update(f.result())
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    return written, problems
 
 
 def _template_carousel_raw(cands: dict) -> dict:
@@ -4388,14 +4612,30 @@ def _carousel_card(s: dict, ai: dict, day, all_names=None) -> dict:
     lo, hi = CAROUSEL_SUMMARY_WORDS
     # Any outlet in the shortlist counts as a citation to strip -- including one wrongly attributed to this story.
     names = sorted(set(all_names or []) | {r["name"] for r in s["links"]})
+    ai = {k: (v if k == "key_facts" else _as_text(v)) for k, v in ai.items()}
+    if isinstance(ai.get("key_facts"), str):
+        ai["key_facts"] = [ai["key_facts"]]
     headline = _clean_point(ai.get("headline"), names).rstrip(".") or _clean_headline(s["headline"], "").rstrip(".")
     summary = _clean_point(ai.get("summary"), names) if ai.get("summary") else ""
+    extracted = False
+    if not summary and len(s.get("excerpt") or "") >= 200:
+        # The AI's summary isn't available but the article was read: use its opening, clearly flagged.
+        out = []
+        for sent in split_sentences(s["excerpt"]):
+            if len(" ".join(out + [sent]).split()) > CAROUSEL_SUMMARY_WORDS[1]:
+                break
+            out.append(sent)
+        summary = " ".join(out) or " ".join(s["excerpt"].split()[:CAROUSEL_SUMMARY_WORDS[1]])
+        extracted = True
     facts = [_clean_point(f, names) for f in (ai.get("key_facts") or []) if str(f).strip()][:4] if isinstance(ai.get("key_facts"), list) else []
     if not facts:   # without the AI: what each outlet's headline says -- attributed, not restated as fact
         facts = [f'{it.get("source", "")}: "{it["headline"]}"' for it in s["items"][:3]]
     context = _clean_point(ai.get("context"), names) if ai.get("context") else ""
     flags = []
     words = len(summary.split())
+    if extracted:
+        flags.append(f"Summary is an extract from {s.get('excerpt_source') or 'the source'}'s article (the AI summary "
+                     "wasn't available) -- rewrite it in your own words before use")
     if not summary:
         flags.append(f"Summary missing -- editor to write {lo}-{hi} words from the linked sources")
     elif not lo <= words <= hi:
@@ -4613,43 +4853,128 @@ def _log_entry(s: dict, outcome: str) -> dict:
 
 def gather_daily_carousel(day=None, state_choice: str = "both", client=None, model: str = DEFAULT_MODEL) -> dict:
     """The full daily carousel DRAFT for one IST calendar day (default today).
-    state_choice: both / ap / telangana / none -- which states feed 'state developments'."""
+    state_choice: both / ap / telangana / none -- which states feed 'state developments'.
+
+    Built for speed and reliability:
+      1. all searches run at once (GDELT in the background, with a deadline);
+      2. article text starts downloading for every shortlisted story WHILE the AI
+         chooses the stories (a short request: headlines only);
+      3. the code applies the editorial rules to the choice (coverage, no repeats);
+      4. only the chosen stories are written -- in small parallel batches, with a
+         retry for any skipped -- while the post copy is written alongside.
+    Small requests can't be cut off half-way, which is what used to lose summaries."""
+    from concurrent.futures import ThreadPoolExecutor
+    t0 = time.monotonic()
+    timing = {}
     day = day or ist_today()
     validate_wrap_range(day, day)
     state_keys = [] if str(state_choice).lower() in ("none", "no", "") else resolve_wrap_states(state_choice)
-    print(f"  - Gathering the day's news across {len(CAROUSEL_CATEGORIES) + len(state_keys)} categories...")
+    print(f"  - Searching the day's news ({len(CAROUSEL_CATEGORIES) + len(state_keys)} categories, in parallel)...")
     by_cat, status = gather_carousel_news(day, state_keys)
     cands = build_carousel_candidates(by_cat, state_keys)
+    timing["searching"] = time.monotonic() - t0
     status["Shortlist"] = (f"{len(cands['mains'])} main candidates, {len(cands['briefs'])} brief candidates, "
                            f"{sum(1 for e in cands['log'] if e['outcome'].startswith('Excluded'))} excluded as "
                            f"unverifiable, {sum(1 for e in cands['log'] if e['outcome'].startswith('Dropped'))} "
-                           "cross-category duplicates dropped")
-    print(f"  - Fetching article text for {len(cands['mains'])} shortlisted stories...")
-    got = attach_article_text(cands["mains"])
-    for s in cands["mains"]:       # the article text can reveal a state link the headline didn't show
-        _tag_story(s, state_keys)
+                           "duplicates or off-topic results dropped")
+
+    # 2. article text downloads in the background while the AI chooses
+    fetcher = ThreadPoolExecutor(max_workers=CAROUSEL_FETCH_WORKERS)
+    fetching = {x["cid"]: fetcher.submit(_fetch_story_text, x) for x in cands["mains"]}
+    fetch_deadline = time.monotonic() + CAROUSEL_FETCH_DEADLINE
+    sel, from_ai, problems = None, False, []
+    t1 = time.monotonic()
+    if client is not None and cands["mains"]:
+        print("  - Asking Sarvam AI to choose the stories...")
+        picker = ThreadPoolExecutor(max_workers=1)
+        try:
+            sel = picker.submit(_carousel_ai_json, client, model, _carousel_select_prompt(day),
+                                _carousel_select_user(day, cands), "slides", 800).result(timeout=CAROUSEL_SELECT_TIMEOUT)
+            sel = _norm_selection(sel)
+            from_ai = True
+        except Exception as e:
+            sel = None
+            problems.append("choosing: " + ("took too long" if type(e).__name__ == "TimeoutError" else _short_error(e)))
+        finally:
+            picker.shutdown(wait=False, cancel_futures=True)
+    if sel is None:
+        sel = _template_carousel_raw(cands)
+
+    # 3. editorial rules applied to the choice
+    plan = assemble_carousel({**sel, "stories": {}}, cands, day, True, {})
+    by_id = {x["cid"]: x for x in cands["mains"] + cands["briefs"]}
+    card_ids = [c["cid"] for sl in plan["slides"] for c in sl["cards"]]
+
+    # only the chosen stories' text is waited for; the rest of the downloads are abandoned
+    from concurrent.futures import wait as _wait
+    _wait([fetching[c] for c in card_ids], timeout=max(0.0, fetch_deadline - time.monotonic()))
+    results = []
+    for cid in card_ids:          # one shared deadline -- waits never add up story by story
+        f = fetching[cid]
+        if f.done() and not f.exception():
+            results.append(f.result())
+        else:
+            by_id[cid]["excerpt"], by_id[cid]["excerpt_note"] = "", "the article took too long to download"
+            results.append(by_id[cid]["excerpt_note"])
+    fetcher.shutdown(wait=False, cancel_futures=True)
+    got = _fetch_counts(results)
+    for cid in card_ids:          # the article text can reveal a state link the headline didn't show
+        _tag_story(by_id[cid], state_keys)
     why = ", ".join(f"{n} {label}" for key, label in (("unresolved", "Google News links not resolvable"),
                                                      ("blocked", "sites refused or unreachable"),
                                                      ("unreadable", "pages without readable text"),
                                                      ("other", "other")) if (n := got.get(key)))
-    status["Article text"] = (f"fetched for {got['fetched']} of {got['total']} shortlisted stories"
+    status["Article text"] = (f"fetched for {got['fetched']} of {got['total']} chosen stories"
                               + (f" (missing: {why})" if why else "")
                               + ("" if gnewsdecoder else "; tip: pip install googlenewsdecoder resolves more Google News links"))
-    raw, used_template = None, True
-    if client is not None and cands["mains"]:
-        print("  - Asking Sarvam AI to draft the carousel...")
+
+    # 4. writing (parallel batches) and post copy at the same time
+    stories_ai, post_raw = {}, {}
+    if client is not None and card_ids:
+        print(f"  - Asking Sarvam AI to write {len(card_ids)} stories and the post copy (in parallel)...")
+        write_deadline = time.monotonic() + CAROUSEL_WRITE_DEADLINE
+        poster = ThreadPoolExecutor(max_workers=1)
         try:
-            raw = generate_carousel_raw(client, model, day, cands)
-            used_template = False
-            status["Draft"] = "written by Sarvam AI -- DRAFT, pending editorial checks"
-        except Exception as e:
-            status["Draft"] = f"Sarvam failed ({_short_error(e)}); stories chosen by coverage, writing left to the editor"
+            post_future = poster.submit(_carousel_ai_json, client, model, _carousel_post_prompt(day),
+                                        _carousel_post_user(day, plan), "caption", 1500)
+            stories_ai, write_problems = write_carousel_stories(client, model, day, [by_id[c] for c in card_ids],
+                                                                write_deadline)
+            problems += [f"writing: {p}" for p in write_problems]
+            try:
+                post_raw = _norm_post(post_future.result(timeout=max(0.5, write_deadline - time.monotonic())))
+            except Exception as e:
+                problems.append("post copy: " + ("took too long" if type(e).__name__ == "TimeoutError" else _short_error(e)))
+        finally:
+            poster.shutdown(wait=False, cancel_futures=True)
+    timing["AI and article text"] = time.monotonic() - t1
+
+    written = sum(1 for c in card_ids if _as_text((stories_ai.get(c) or {}).get("summary")))
+    used_template = written == 0
+    if client is None:
+        status["Draft"] = "Sarvam not available; stories chosen by coverage, writing left to the editor"
+    elif not cands["mains"]:
+        status["Draft"] = "no stories found"
     else:
-        status["Draft"] = ("no stories found" if not cands["mains"] else
-                           "Sarvam not available; stories chosen by coverage, writing left to the editor")
-    if raw is None:
-        raw = _template_carousel_raw(cands)
-    return assemble_carousel(raw, cands, day, used_template, status)
+        status["Draft"] = (f"{'stories chosen by Sarvam AI' if from_ai else 'stories chosen by coverage'}; "
+                           f"{written} of {len(card_ids)} summaries written by Sarvam AI"
+                           + (f" (the rest use an extract of the article, flagged)" if written < len(card_ids) else "")
+                           + " -- DRAFT, pending editorial checks"
+                           + (f"; problems: {'; '.join(problems)[:300]}" if problems else ""))
+    final = {"top_story": plan["slides"][1]["cards"][0]["cid"] if plan["slides"][1]["cards"] else "",
+             "slides": {sl["key"]: [c["cid"] for c in sl["cards"]] for sl in plan["slides"] if sl["key"] in CAROUSEL_STORY_SLIDES},
+             "briefs": [b["cid"] for sl in plan["slides"] for b in sl["briefs"]],
+             "stories": stories_ai, **{k: post_raw.get(k) for k in ("hook", "caption", "hashtags", "takeaway",
+                                                                     "follow_prompt", "alt_text") if post_raw.get(k)}}
+    try:
+        c = assemble_carousel(final, cands, day, used_template, status)
+    except Exception as e:   # last resort: never end without a draft -- rebuild from coverage alone
+        status["Draft"] = (f"the AI-assisted draft could not be assembled ({_short_error(e)}); rebuilt from coverage "
+                           "with all writing left to the editor")
+        c = assemble_carousel(_template_carousel_raw(cands), cands, day, True, status)
+    c["notes"] = plan["notes"] + [n for n in c["notes"] if n not in plan["notes"]]
+    timing["total"] = time.monotonic() - t0
+    status["Timing"] = ", ".join(f"{k} {v:.0f}s" for k, v in timing.items())
+    return c
 
 
 _CAROUSEL_TRIGGER = re.compile(r"\bcarousel\b", re.I)
