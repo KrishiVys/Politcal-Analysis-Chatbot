@@ -4,6 +4,7 @@ requests>=2.31
 beautifulsoup4>=4.12
 sarvamai
 reportlab>=4.0
+python-pptx>=0.6.21     # final carousel slides (PowerPoint)
 python-dotenv>=1.0
 pandas>=2.0
 
