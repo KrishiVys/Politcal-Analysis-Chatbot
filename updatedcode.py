@@ -5181,6 +5181,994 @@ def save_carousel_pdf(c: dict) -> str:
 
 
 # --------------------------------------------------------------------------
+# Carousel: editorial review and FINAL slides (PowerPoint, CamPen template)
+# --------------------------------------------------------------------------
+# The draft carousel is turned into an editable review: the editor checks and
+# edits every story, adds licensed images with credits, completes the
+# checklist and approves. Only an approved review can be built into the final
+# PowerPoint, laid out exactly like the CamPen Media master template
+# (TNW_Mastertemplate.pdf): 3:4 portrait, 810 x 1080 pt, nine slides --
+#   1 cover  2 top story  3 national  4 state (AP & Telangana)  5 world
+#   6 business & technology  7 in brief  8 today's takeaway  9 sources (QR)
+# in English, and in Telugu from a reviewed Sarvam translation.
+#
+# The template's brand artwork (backgrounds, logos, globe, pillars, dividers,
+# fixed lettering) is in the carousel_assets/ folder next to this file, taken
+# from the master template itself. Everything that changes daily is real,
+# editable PowerPoint text.
+
+try:
+    from pptx import Presentation
+    from pptx.util import Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.oxml.ns import qn
+except ImportError:          # pip install python-pptx
+    Presentation = None
+
+import io as _io
+import copy as _copy
+
+CAROUSEL_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "carousel_assets")
+DECK_W, DECK_H = 810, 1080            # points: the template's 3:4 portrait page
+DECK_TOP, DECK_BOTTOM = 112, 982      # content area of the light slides (between header and footer rules)
+
+# Colours measured from the master template.
+DECK_COLORS = {
+    "navy": "102848", "ink": "081830", "black": "181818", "body": "081028", "blue": "1058C0",
+    "chip_blue": "0C60D0", "chip_red": "CC0404", "chip_teal": "044C50", "chip_world": "184CD0",
+    "telangana": "0850D0", "andhra": "C02828", "brief_num": "084040", "white": "F8F8F8", "qr_bg": "FFFFFF",
+}
+# Fonts the master template uses. PowerPoint uses these if they're installed on the computer that opens the
+# deck (they are all available in Canva, so a deck imported into Canva keeps them); otherwise PowerPoint
+# substitutes. Free downloads: Inter, Heebo, Noto Sans Telugu, Ramabhadra (Google Fonts), Neue Montreal
+# (Pangram Pangram). Change any of them here.
+DECK_FONTS = {
+    "brand": "Neue Montreal",          # header date, top story, in-brief items
+    "sans": "Heebo",                   # national / state headlines and summaries
+    "body": "Inter",                   # world / business summaries, cover text
+    "serif": "Times New Roman",        # world headlines (the template's TeX Gyre Termes is a Times design)
+    "serif_alt": "Brixton TC",         # business & technology headlines, state names
+    "display": "Sugo Pro Display",     # takeaway headline, dates on dark slides
+    "chip": "Arial",                   # label chips
+    "telugu": "Noto Sans Telugu",      # all Telugu text
+    "telugu_display": "Ramabhadra",    # Telugu takeaway headline
+}
+
+DECK_CHIP_DEFAULTS = {"national": "INDIA", "world": "WORLD AFFAIRS", "business": "BUSINESS & ECONOMY",
+                      "tech": "TECHNOLOGY", "health_edu": "HEALTH & EDUCATION", "environment": "ENVIRONMENT",
+                      "sports": "SPORTS", "state": ""}
+DECK_SECTIONS = [  # key, review title, most stories on the slide
+    ("top", "Slide 2 -- Top story", 1), ("national", "Slide 3 -- National developments", 3),
+    ("state", "Slide 4 -- State developments: AP & Telangana", 4), ("world", "Slide 5 -- World affairs", 2),
+    ("biztech", "Slide 6 -- Business & technology", 3)]
+DECK_MAX_BRIEFS = 5
+DECK_STATUS_LABELS = {"developing": "DEVELOPING", "allegation": "ALLEGATION", "disputed": "DISPUTED"}
+DECK_FOLLOW_DEFAULT = "Follow CamPen Media for tomorrow's wrap-up. Share this with someone who'd find it useful."
+DECK_DEVELOPING_NOTE = "Details may change as these stories develop."
+
+# Telugu for the fixed labels (the template's own wording where it has one). Every Telugu line can still be
+# edited in the review before the Telugu deck is built.
+TE_LABELS = {
+    "TOP STORY": "ముఖ్య వార్త", "NATIONAL": "జాతీయ", "INDIA": "భారతదేశం", "COURTS": "న్యాయస్థానాలు",
+    "DEVELOPING": "అభివృద్ధి", "ALLEGATION": "ఆరోపణ", "DISPUTED": "వివాదాస్పదం", "STATE": "రాష్ట్రాలు",
+    "TELANGANA": "తెలంగాణ", "ANDHRA PRADESH": "ఆంధ్రప్రదేశ్", "AP & TELANGANA": "ఆంధ్రప్రదేశ్ & తెలంగాణ",
+    "WORLD AFFAIRS": "ప్రపంచ వ్యవహారాలు", "BUSINESS & ECONOMY": "వ్యాపారం & ఆర్థికం", "TECHNOLOGY": "సాంకేతికత",
+    "CYBERSECURITY": "సైబర్ భద్రత", "HEALTH & EDUCATION": "ఆరోగ్యం & విద్య", "ENVIRONMENT": "పర్యావరణం",
+    "SPORTS": "క్రీడలు", "SOURCES:": "మూలాలు:", "IMAGE CREDITS:": "ఇమేజ్ క్రెడిట్:",
+    DECK_DEVELOPING_NOTE: "ఈ వార్తలు కొనసాగుతున్నందున వివరాలు మారవచ్చు.",
+    DECK_FOLLOW_DEFAULT: "రేపటి వార్తల సంక్షిప్తం కోసం క్యామ్‌పెన్ మీడియాను ఫాలో అవ్వండి. ఈ పోస్ట్‌ను ఉపయోగకరంగా భావించే వారితో షేర్ చేయండి.",
+}
+TE_DAYS = ["సోమవారం", "మంగళవారం", "బుధవారం", "గురువారం", "శుక్రవారం", "శనివారం", "ఆదివారం"]
+TE_MONTHS = ["జనవరి", "ఫిబ్రవరి", "మార్చి", "ఏప్రిల్", "మే", "జూన్", "జూలై", "ఆగస్టు", "సెప్టెంబర్", "అక్టోబర్",
+             "నవంబర్", "డిసెంబర్"]
+
+
+def te_label(text: str) -> str:
+    """Telugu for a fixed label or chip ("INDIA - COURTS", "WORLD AFFAIRS"); unknown words stay as they are."""
+    t = (text or "").strip()
+    if t in TE_LABELS:
+        return TE_LABELS[t]
+    if t.upper() in TE_LABELS:
+        return TE_LABELS[t.upper()]
+    parts = re.split(r"(\s*[·\-–&]\s*)", t)
+    return "".join(TE_LABELS.get(p.strip().upper(), p) if p.strip() and not re.fullmatch(r"\s*[·\-–&]\s*", p) else p
+                   for p in parts)
+
+
+def _deck_category_key(label: str) -> str:
+    inv = {v: k for k, v in CAROUSEL_CATEGORY_LABELS.items()}
+    return inv.get(label, "national")
+
+
+def _deck_status(verification: str) -> str:
+    v = verification or ""
+    return ("allegation" if "ALLEGATION" in v else "disputed" if "DISPUTED" in v
+            else "developing" if "DEVELOPING" in v else "")
+
+
+# ---------------------------------------------------------------- review state
+def carousel_edit_state(c: dict) -> dict:
+    """The draft carousel as an editable review, in the template's nine-slide structure."""
+    slides = {sl["key"]: sl for sl in c["slides"]}
+
+    def story(card, section, include=True):
+        cat = _deck_category_key(card["category"])
+        return {"id": card["cid"], "section": section, "include": include,
+                "chip": DECK_CHIP_DEFAULTS.get(cat, "") or "", "status": _deck_status(card["verification"]),
+                "state": (card.get("related_states") or [""])[0] if section == "state" else "",
+                "headline": card["headline"], "summary": card["summary"],
+                "bullets": [f for f in card["key_facts"][:3] if f] if section == "top" else [],
+                "sources": [r["name"] for r in card["sources"]], "links": [{"name": r["name"], "url": r["url"]}
+                                                                           for r in card["sources"]],
+                "image_caption": "", "image_credit": "", "flags": list(card["flags"]),
+                "verification": card["verification"], "te": {}}
+
+    stories = []
+    for key, src in (("top", "top"), ("national", "national"), ("state", "state"), ("world", "world")):
+        stories += [story(card, key) for card in slides.get(src, {}).get("cards", [])]
+    biz = slides.get("business", {}).get("cards", []) + slides.get("more", {}).get("cards", [])
+    stories += [story(card, "biztech", include=i < 3) for i, card in enumerate(biz)]
+    briefs = []
+    for b in slides.get("briefs", {}).get("briefs", []):
+        names = ", ".join(r["name"] for r in b["sources"][:2])
+        note = " An allegation; not yet verified." if "ALLEGATION" in b["verification"] else ""
+        briefs.append({"id": b["cid"], "include": True, "text": f"{b['headline'].rstrip('.')}.{note} ({names}).",
+                       "links": [{"name": r["name"], "url": r["url"]} for r in b["sources"]], "te": {}})
+    takeaway = [x for x in split_sentences(c["post"].get("takeaway") or "") if x.strip()]
+    return {"day": c["day"].isoformat(), "cover": {"hook": c["post"]["hook"], "te": {}}, "stories": stories,
+            "briefs": briefs, "takeaway": {"headline": takeaway[0] if takeaway else "",
+                                           "detail": " ".join(takeaway[1:]), "follow": DECK_FOLLOW_DEFAULT, "te": {}},
+            "sources_url": "", "checklist": {item: False for item in CAROUSEL_CHECKLIST}, "approver": "",
+            "draft_notes": list(c.get("notes") or [])}
+
+
+def deck_section_stories(edit: dict, section: str, included_only: bool = True) -> list:
+    return [s for s in edit["stories"] if s["section"] == section and (s["include"] or not included_only)]
+
+
+# ---------------------------------------------------------------- text measuring (for fitting text to slides)
+_FONT_DIRS = [os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts"), os.path.expanduser("~/Library/Fonts"),
+              "/Library/Fonts", "/System/Library/Fonts", "/System/Library/Fonts/Supplemental", "/usr/share/fonts",
+              "/usr/local/share/fonts", os.path.expanduser("~/.fonts"), os.path.expanduser("~/.local/share/fonts")]
+_MEASURE_FILES = {   # metric stand-ins used only to MEASURE text (the deck itself names DECK_FONTS)
+    ("sans", False): ["arial.ttf", "Arial.ttf", "LiberationSans-Regular.ttf", "DejaVuSans.ttf"],
+    ("sans", True): ["arialbd.ttf", "Arial Bold.ttf", "LiberationSans-Bold.ttf", "DejaVuSans-Bold.ttf"],
+    ("serif", False): ["times.ttf", "Times New Roman.ttf", "LiberationSerif-Regular.ttf", "texgyretermes-regular.otf"],
+    ("serif", True): ["timesbd.ttf", "Times New Roman Bold.ttf", "LiberationSerif-Bold.ttf", "texgyretermes-bold.otf"],
+    ("display", False): ["DejaVuSansCondensed.ttf", "arialn.ttf", "LiberationSansNarrow-Regular.ttf"],
+    ("display", True): ["DejaVuSansCondensed-Bold.ttf", "arialnb.ttf", "LiberationSansNarrow-Bold.ttf"],
+    ("telugu", False): ["NotoSansTelugu-Regular.ttf", "Nirmala.ttc", "Nirmala.ttf", "gautami.ttf", "Lohit-Telugu.ttf"],
+    ("telugu", True): ["NotoSansTelugu-Bold.ttf", "NirmalaB.ttf", "Nirmala.ttc", "gautamib.ttf", "Lohit-Telugu.ttf"],
+}
+_HEURISTIC_WIDTH = {"sans": 0.60, "serif": 0.50, "display": 0.60, "telugu": 0.55}
+# False (default): text is measured as if the computer opening the deck does NOT have the template fonts and
+# substitutes a wide one -- text then always fits, at the cost of being a little smaller than the template when
+# the fonts ARE installed. Set True if every computer (or Canva) that opens the decks has the DECK_FONTS.
+DECK_FONTS_INSTALLED = False
+_WIDE_FILES = {  # (kind, bold): [(file, width factor)] -- DejaVu is among the widest common substitutes
+    ("sans", False): [("DejaVuSans.ttf", 1.0), ("arial.ttf", 1.15), ("Arial.ttf", 1.15), ("LiberationSans-Regular.ttf", 1.15)],
+    ("sans", True): [("DejaVuSans-Bold.ttf", 1.0), ("arialbd.ttf", 1.15), ("Arial Bold.ttf", 1.15), ("LiberationSans-Bold.ttf", 1.15)],
+    ("serif", False): [("LiberationSerif-Regular.ttf", 1.03), ("times.ttf", 1.03), ("Times New Roman.ttf", 1.03)],
+    ("serif", True): [("LiberationSerif-Bold.ttf", 1.03), ("timesbd.ttf", 1.03), ("Times New Roman Bold.ttf", 1.03)],
+}
+_FONT_PATHS, _MEASURE_CACHE = None, {}
+
+
+def _font_index() -> dict:
+    global _FONT_PATHS
+    if _FONT_PATHS is None:
+        _FONT_PATHS = {}
+        for d in _FONT_DIRS:
+            if os.path.isdir(d):
+                for root, _dirs, files in os.walk(d):
+                    for f in files:
+                        _FONT_PATHS.setdefault(f.lower(), os.path.join(root, f))
+    return _FONT_PATHS
+
+
+def _measure_font(kind: str, bold: bool, size: float):
+    """(PIL font, width factor) used to MEASURE text, or (None, 1.0) for the character-count estimate."""
+    key = (kind, bold, round(size * 4), DECK_FONTS_INSTALLED)
+    if key not in _MEASURE_CACHE:
+        found = (None, 1.0)
+        candidates = ([(f, 1.03) for f in _MEASURE_FILES.get((kind, bold), [])] if DECK_FONTS_INSTALLED
+                      else _WIDE_FILES.get((kind, bold), [(f, 1.03) for f in _MEASURE_FILES.get((kind, bold), [])]))
+        try:
+            from PIL import ImageFont
+            for name, factor in candidates:
+                path = _font_index().get(name.lower())
+                if path:
+                    found = (ImageFont.truetype(path, max(1, int(round(size * 4)))), factor)   # 4x for precision
+                    break
+        except Exception:
+            found = (None, 1.0)
+        _MEASURE_CACHE[key] = found
+    return _MEASURE_CACHE[key]
+
+
+def _text_width(text: str, size: float, kind: str, bold: bool) -> float:
+    font, factor = _measure_font(kind, bold, size)
+    if font is not None:
+        try:
+            return font.getlength(text) / 4.0 * factor
+        except Exception:
+            pass
+    return len(text) * size * _HEURISTIC_WIDTH[kind] * (1.06 if bold else 1.0)
+
+
+def _line_count(text: str, size: float, width: float, kind: str, bold: bool) -> int:
+    lines = 0
+    for para in (text or "").split("\n"):
+        words, cur = para.split(), ""
+        n = 1
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if cur and _text_width(trial, size, kind, bold) > width:
+                n, cur = n + 1, w
+            else:
+                cur = trial
+        lines += n
+    return max(1, lines)
+
+
+def _text_height(text, size, width, kind, bold, spacing=1.0) -> float:
+    return _line_count(text, size, width, kind, bold) * size * 1.2 * spacing
+
+
+def _is_telugu(text: str) -> bool:
+    return bool(re.search(r"[\u0C00-\u0C7F]", text or ""))
+
+
+# ---------------------------------------------------------------- drawing on a slide (or just measuring)
+class _DeckCanvas:
+    """Draws on a slide -- or, with slide=None, only measures, so each slide can be laid out at several text
+    scales until it fits."""
+
+    def __init__(self, slide, lang: str, images: dict, scale: float = 1.0):
+        self.slide, self.lang, self.images, self.k = slide, lang, images or {}, scale
+
+    def font_for(self, role: str) -> str:
+        if self.lang == "te":
+            return DECK_FONTS["telugu_display"] if role == "display" else DECK_FONTS["telugu"]
+        return DECK_FONTS[role]
+
+    def kind_for(self, role: str) -> str:
+        if self.lang == "te":
+            return "telugu"
+        if DECK_FONTS_INSTALLED:
+            return {"serif": "serif", "serif_alt": "serif", "display": "display"}.get(role, "sans")
+        # Without the template fonts, Brixton TC and Sugo Pro Display fall back to a wide sans: measure as one.
+        return "serif" if role == "serif" else "sans"
+
+    def image(self, name, x, y, w, h):
+        if self.slide is not None:
+            self.slide.shapes.add_picture(os.path.join(CAROUSEL_ASSETS_DIR, f"{name}.png"), Pt(x), Pt(y), Pt(w), Pt(h))
+
+    def crop(self, name):
+        geom = _deck_crops()[name]
+        self.image(name, *geom)
+
+    def picture(self, data: bytes, x, y, w, h) -> tuple:
+        """A user image fitted inside the box (aspect kept, left-aligned); returns (w, h) used."""
+        from PIL import Image
+        im = Image.open(_io.BytesIO(data))
+        iw, ih = im.size
+        r = min(w / iw, h / ih)
+        pw, ph = iw * r, ih * r
+        if self.slide is not None:
+            buf = _io.BytesIO()
+            im.convert("RGB").save(buf, "JPEG", quality=90)
+            buf.seek(0)
+            self.slide.shapes.add_picture(buf, Pt(x), Pt(y), Pt(pw), Pt(ph))
+        return pw, ph
+
+    def text(self, x, y, w, runs, size, role="body", color="body", bold=False, italic=False, align="left",
+             spacing=1.0, scaled=True, h=None, anchor="top") -> float:
+        """Paragraph(s) of text; `runs` is a string or [(text, {overrides})]. Returns the height used."""
+        size = size * self.k if scaled else size
+        if isinstance(runs, str):
+            runs = [(runs, {})]
+        full = "".join(t for t, _ in runs)
+        height = _text_height(full, size, w, self.kind_for(role), bold, spacing)
+        if self.slide is not None and full.strip():
+            box = self.slide.shapes.add_textbox(Pt(x), Pt(y), Pt(w), Pt(h if h is not None else height + size * 0.35))
+            tf = box.text_frame
+            tf.word_wrap = True
+            tf.auto_size = MSO_AUTO_SIZE.NONE
+            tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+            tf.vertical_anchor = {"top": MSO_ANCHOR.TOP, "middle": MSO_ANCHOR.MIDDLE, "bottom": MSO_ANCHOR.BOTTOM}[anchor]
+            first = True
+            for chunk_i, (t, opt) in enumerate(runs):
+                for li, line in enumerate(t.split("\n")):
+                    if li > 0 or first:
+                        p = tf.paragraphs[0] if first else tf.add_paragraph()
+                        first = False
+                        p.alignment = {"left": PP_ALIGN.LEFT, "right": PP_ALIGN.RIGHT, "center": PP_ALIGN.CENTER,
+                                       "justify": PP_ALIGN.JUSTIFY}[align]
+                        p.line_spacing = spacing
+                    if not line:
+                        continue
+                    r = p.add_run()
+                    r.text = line
+                    f = r.font
+                    f.size = Pt(opt.get("size", size))
+                    f.bold = opt.get("bold", bold)
+                    f.italic = opt.get("italic", italic)
+                    f.color.rgb = RGBColor.from_string(DECK_COLORS.get(opt.get("color", color), opt.get("color", color)))
+                    _deck_set_font(r, self.font_for(opt.get("role", role)), _is_telugu(line) or self.lang == "te")
+                    if opt.get("link"):
+                        r.hyperlink.address = opt["link"]
+        return height
+
+    def chip(self, x, y, label, fill="chip_blue", size=22, scaled=True) -> tuple:
+        """A rounded label chip sized to its text; returns (w, h)."""
+        size = size * self.k if scaled else size
+        label = label.strip()
+        w = _text_width(label, size, self.kind_for("chip"), True) + size * 1.6
+        h = size * 2.0
+        if self.slide is not None and label:
+            shp = self.slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Pt(x), Pt(y), Pt(w), Pt(h))
+            shp.adjustments[0] = 0.12
+            shp.fill.solid()
+            shp.fill.fore_color.rgb = RGBColor.from_string(DECK_COLORS[fill])
+            shp.line.fill.background()
+            shp.shadow.inherit = False
+            tf = shp.text_frame
+            tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            p = tf.paragraphs[0]
+            p.alignment = PP_ALIGN.CENTER
+            r = p.add_run()
+            r.text = label
+            r.font.size, r.font.bold = Pt(size), True
+            r.font.color.rgb = RGBColor.from_string("FFFFFF")
+            _deck_set_font(r, self.font_for("chip"), _is_telugu(label) or self.lang == "te")
+        return (w, h) if label else (0, 0)
+
+
+def _deck_set_font(run, name: str, telugu: bool) -> None:
+    run.font.name = name
+    if telugu:     # Telugu is a "complex script": PowerPoint takes its font from <a:cs>
+        rpr = run._r.get_or_add_rPr()
+        rpr.set("lang", "te-IN")
+        cs = rpr.find(qn("a:cs"))
+        if cs is None:
+            from lxml import etree
+            cs = etree.SubElement(rpr, qn("a:cs"))
+            hl = rpr.find(qn("a:hlinkClick"))
+            if hl is not None:              # schema order: ... latin, ea, cs, sym, hlinkClick
+                hl.addprevious(cs)
+        cs.set("typeface", name)
+
+
+_DECK_CROPS = None
+
+
+def _deck_crops() -> dict:
+    global _DECK_CROPS
+    if _DECK_CROPS is None:
+        with open(os.path.join(CAROUSEL_ASSETS_DIR, "crops.json"), encoding="utf-8") as f:
+            _DECK_CROPS = json.load(f)
+    return _DECK_CROPS
+
+
+# ---------------------------------------------------------------- the nine slides
+def _deck_text(edit_item: dict, field: str, lang: str) -> str:
+    if lang == "te":
+        return (edit_item.get("te") or {}).get(field, "")
+    v = edit_item.get(field, "")
+    return "\n".join(v) if isinstance(v, list) else v
+
+
+def _deck_bullets(story: dict, lang: str) -> list:
+    v = (story.get("te") or {}).get("bullets") if lang == "te" else story.get("bullets")
+    if isinstance(v, str):
+        v = [x for x in v.split("\n")]
+    return [x.strip() for x in (v or []) if x and x.strip()]
+
+
+def _deck_header_light(cv, final, n, total):
+    cv.image("bg_light", 0, -7.9, DECK_W, DECK_H)
+    cv.image("logo_red", 23.7, -6.5, 101.3, 101.3)
+    cv.crop("light_header")
+    cv.text(540, 39, 224, f"{_deck_date(final)} \u00b7 {n}/{total}", 19, role="brand", color="navy", bold=True,
+            align="right", scaled=False)
+    cv.image("divider_header", 30.6, 86.1, 748.5, 14.2)
+
+
+def _deck_footer_light(cv, stories, lang, with_sources=True):
+    cv.image("divider_footer", 30.6, 990.8, 748.5, 14.2)
+    cv.crop(f"swipe_{lang}")
+    if not with_sources:
+        return
+    names, links = [], []
+    for s in stories:
+        for l in s.get("links") or [{"name": n, "url": ""} for n in s.get("sources", [])]:
+            if l["name"] not in names:
+                names.append(l["name"])
+                links.append(l)
+    if not names:
+        return
+    prefix = te_label("SOURCES:") if lang == "te" else "Sources:"
+    shown, more = links[:6], len(links) - 6
+    runs = [(prefix + " ", {})]
+    for i, l in enumerate(shown):
+        runs.append((l["name"], {}))
+        if i < len(shown) - 1:
+            runs.append((", ", {}))
+    if more > 0:
+        runs.append((f" +{more} more" if lang == "en" else f" +{more}", {}))
+    cv.text(39, 1010, 590, runs, 17, role="brand", color="navy", bold=True, scaled=False, h=60)
+
+
+def _deck_date(final) -> str:
+    d = datetime.fromisoformat(final["day"]) if isinstance(final["day"], str) else final["day"]
+    return f"{d:%d %b %Y}".upper()
+
+
+def _deck_long_date(final, lang) -> str:
+    d = datetime.fromisoformat(final["day"]) if isinstance(final["day"], str) else final["day"]
+    if lang == "te":
+        return f"{TE_DAYS[d.weekday()]}, {d.day} {TE_MONTHS[d.month - 1]} {d.year}"
+    return f"{d:%A}, {d.day} {d:%B %Y}"
+
+
+def _deck_story_label(story: dict, lang: str) -> str:
+    label = story.get("chip") or ""
+    return te_label(label) if lang == "te" else label
+
+
+def _deck_status_label(story: dict, lang: str) -> str:
+    lab = DECK_STATUS_LABELS.get(story.get("status") or "", "")
+    return te_label(lab) if (lang == "te" and lab) else lab
+
+
+def _slide_cover(cv, final, n, total):
+    lang = cv.lang
+    cv.image("bg_dark", 0, -7.9, DECK_W, DECK_H)
+    cv.image("globe", 419.9, 585.8, 390, 486)
+    cv.image("logo_white", 30.6, 14.4, 79.5, 79.5)
+    cv.crop("cover_header_en")
+    cv.text(560, 42, 207, f"{_deck_date(final)} \u00b7 {n}/{total}", 17, role="body", color="white", align="right",
+            scaled=False)
+    cv.image("logo_big", 192.2, 36.4, 425.2, 425.2)
+    cv.crop(f"cover_title_{lang}")
+    cv.image("line_cover", 61.9, 707.4, 249.7, 14.2)
+    y_date = 735 if lang == "en" else 727
+    cv.text(61, y_date, 640, _deck_long_date(final, lang), 34 if lang == "en" else 30, role="body", color="white",
+            scaled=False)
+    hook = _deck_text(final["cover"], "hook", lang)
+    top, bottom = (805, 962) if lang == "en" else (797, 952)
+    for size in (34, 32, 30, 28, 26, 24, 22):
+        if _text_height(hook, size, 650, cv.kind_for("body"), False, 1.0) <= bottom - top:
+            break
+    cv.text(61, top, 650, hook, size, role="body", color="white", scaled=False)
+    cv.crop(f"cover_swipe_{lang}")
+    return bottom - top - _text_height(hook, size, 650, cv.kind_for("body"), False, 1.0)
+
+
+def _story_block(cv, x, y, w, story, lang, head_size, body_size, head_role, body_role, head_color="ink",
+                 body_color="body", image_mode=None, body_align="justify", inline_status=False) -> float:
+    """Headline + (image) + summary for one story; returns the new y."""
+    headline = _deck_text(story, "headline", lang)
+    summary = _deck_text(story, "summary", lang)
+    runs = [(headline, {})]
+    status = _deck_status_label(story, lang) if inline_status else ""
+    if status:
+        runs.append(("   " + status, {"color": "andhra", "size": max(14, body_size * cv.k), "role": "chip"}))
+    y += cv.text(x, y, w, runs, head_size, role=head_role, color=head_color, bold=True, spacing=0.95) + 10 * cv.k
+    img = cv.images.get(story["id"])
+    if img and image_mode == "right":
+        thumb_w = 175 * cv.k
+        pw, ph = cv.picture(img, x + w - thumb_w, y, thumb_w, 210 * cv.k)
+        sh = cv.text(x, y, w - thumb_w - 18, summary, body_size, role=body_role, color=body_color, align=body_align,
+                     spacing=1.05)
+        credit = story.get("image_credit") or ""
+        ch = 0
+        if credit:
+            label = te_label("IMAGE CREDITS:") if lang == "te" else "Image credits:"
+            ch = cv.text(x + w - thumb_w, y + ph + 4, thumb_w, f"{label} {credit}", 12, role="body", color="body",
+                         scaled=False)
+        return y + max(sh, ph + ch + 6) + 6
+    sh = cv.text(x, y, w, summary, body_size, role=body_role, color=body_color, align=body_align, spacing=1.05)
+    y += sh
+    if img and image_mode == "below":
+        y += 12 * cv.k
+        pw, ph = cv.picture(img, x, y, min(w, 420 * cv.k), 230 * cv.k)
+        y += ph + 4
+        cap = " \u00b7 ".join(filter(None, [_deck_text(story, "image_caption", lang),
+                                             ((te_label("IMAGE CREDITS:") if lang == "te" else "Image credits:")
+                                              + " " + story["image_credit"]) if story.get("image_credit") else ""]))
+        if cap:
+            y += cv.text(x, y, w, cap, 13, role="body", color="body", scaled=False) + 2
+    return y
+
+
+def _slide_top(cv, final, n, total, stories):
+    lang = cv.lang
+    s = stories[0]
+    _deck_header_light(cv, final, n, total)
+    y = 124
+    label = (te_label("TOP STORY") if lang == "te" else "TOP STORY") + " \u00b7 " + _deck_story_label(s, lang)
+    y += cv.text(42, y, 700, label, 24, role="brand", color="blue", bold=True) + 14 * cv.k
+    y += cv.text(38, y, 720, _deck_text(s, "headline", lang), 48, role="brand", color="navy", bold=True,
+                 spacing=0.95) + 18 * cv.k
+    img = cv.images.get(s["id"])
+    if img:
+        pw, ph = cv.picture(img, 54.4, y, 433.5 * cv.k + 200 * (1 - cv.k), 243.7 * cv.k)
+        y += ph + 6
+        cap = _deck_text(s, "image_caption", lang)
+        credit = s.get("image_credit") or ""
+        line = " \u00b7 ".join(filter(None, [cap, ((te_label("IMAGE CREDITS:") if lang == "te" else "Image credits:")
+                                                  + " " + credit) if credit else ""]))
+        if line:
+            y += cv.text(52, y, 600, line, 15, role="brand", color="ink", bold=True, scaled=False)
+        y += 18 * cv.k
+    y += cv.text(31, y, 717, _deck_text(s, "summary", lang), 22, role="brand", color="body", align="justify",
+                 spacing=1.05) + 14 * cv.k
+    for b in _deck_bullets(s, lang):
+        bh = cv.text(75, y, 650, b, 21, role="brand", color="body")
+        cv.image("bullet_dot", 46.2, y + (21 * cv.k * 1.2 - 27.7) / 2, 16.5, 27.7)
+        y += bh + 8 * cv.k
+    _deck_footer_light(cv, stories, lang)
+    return y
+
+
+def _slide_flow(cv, final, n, total, stories, kind):
+    """National, world and business & technology slides: stacked stories with chips."""
+    lang = cv.lang
+    _deck_header_light(cv, final, n, total)
+    y = 108
+    head_role = {"national": "sans", "world": "serif", "biztech": "serif_alt"}[kind]
+    body_role = {"national": "sans", "world": "body", "biztech": "body"}[kind]
+    head_color = "ink" if kind == "national" else "black"
+    developing = False
+    for i, s in enumerate(stories):
+        if i:
+            y += 6 * cv.k
+            cv.image("divider_light" if kind == "biztech" else "divider_row", 30.6, y, 748.5, 14.2)
+            y += 22 * cv.k
+        chip_x, chip_h = 46, 0
+        if kind == "biztech" or i == 0:
+            fill = "chip_teal" if (kind == "biztech" and s.get("chip", "").upper().startswith("BUSINESS")) else \
+                ("chip_world" if kind == "world" else "chip_blue")
+            cw, chip_h = cv.chip(chip_x, y, _deck_story_label(s, lang), fill)
+            chip_x += cw + 14 if cw else 0
+        status = _deck_status_label(s, lang)
+        if status:
+            cw, ch = cv.chip(chip_x, y, status, "chip_red")
+            chip_h = max(chip_h, ch)
+        developing = developing or s.get("status") == "developing"
+        if chip_h:
+            y += chip_h + 12 * cv.k
+        bar = s.get("status") == "allegation" and kind == "national"
+        x0 = 63 if bar else 42
+        head = {"national": 50 if i == 0 else 38, "world": 48, "biztech": 36}[kind]
+        y_start = y
+        y = _story_block(cv, x0, y, 720 - (x0 - 42), s, lang, head, 21, head_role, body_role, head_color=head_color,
+                         image_mode="right" if kind == "biztech" else "below")
+        if bar:
+            cv.image("bar_blue", 40, y_start - chip_h - 8 * cv.k, 16.5, (y - y_start) + chip_h + 8 * cv.k)
+    if developing:
+        note = te_label(DECK_DEVELOPING_NOTE) if lang == "te" else DECK_DEVELOPING_NOTE
+        y += 12 * cv.k
+        y += cv.text(63, y, 680, note, 19, role="chip", color="ink", bold=True, italic=True)
+    _deck_footer_light(cv, stories, lang)
+    return y
+
+
+def _slide_state(cv, final, n, total, stories):
+    lang = cv.lang
+    _deck_header_light(cv, final, n, total)
+    states = []
+    for s in stories:
+        if s.get("state") not in states:
+            states.append(s.get("state"))
+    order = [st_ for st_ in ("Telangana", "Andhra Pradesh") if st_ in states] + [st_ for st_ in states
+                                                                                 if st_ not in ("Telangana", "Andhra Pradesh")]
+    title = " & ".join({"Telangana": "TELANGANA", "Andhra Pradesh": "AP"}.get(st_, (st_ or "").upper()) for st_ in order
+                       if st_) or "AP & TELANGANA"
+    if title == "TELANGANA & AP":
+        title = "AP & TELANGANA"
+    label = (te_label("STATE") + " \u00b7 " + te_label(title)) if lang == "te" else f"STATE \u00b7 {title}"
+    cw, ch = cv.chip(46.2, 104, label, "chip_blue", 26)
+    y = 104 + ch + 22 * cv.k
+    first = True
+    for st_ in order:
+        if not first:
+            y += 4 * cv.k
+            cv.image("divider_row", 60, y, 690, 14.2)
+            y += 22 * cv.k
+        first = False
+        heading = {"Telangana": "TELANGANA", "Andhra Pradesh": "ANDHRA PRADESH"}.get(st_, (st_ or "").upper())
+        if heading:
+            y += cv.text(54, y, 400, te_label(heading) if lang == "te" else heading, 26, role="serif_alt",
+                         color="telangana" if st_ == "Telangana" else "andhra", bold=True) + 8 * cv.k
+        group = [s for s in stories if s.get("state") == st_]
+        for j, s in enumerate(group):
+            if j:
+                y += 6 * cv.k
+                cv.image("divider_row", 90, y, 650, 14.2)
+                y += 20 * cv.k
+            y = _story_block(cv, 58, y, 680, s, lang, 30, 21, "sans", "sans", inline_status=True,
+                             image_mode="right")
+    _deck_footer_light(cv, stories, lang)
+    return y
+
+
+def _slide_briefs(cv, final, n, total, briefs):
+    lang = cv.lang
+    _deck_header_light(cv, final, n, total)
+    cv.crop(f"brief_chip_{lang}")
+    cv.crop(f"brief_title_{lang}")
+    cv.image("divider_footer", 30.6, 302.7, 748.5, 14.2)
+    y = 340
+    for i, b in enumerate(briefs, 1):
+        if i > 1:
+            cv.image("divider_row", 46.2, y - 18 * cv.k, 717.7, 14.2)
+        text = _deck_text(b, "text", lang)
+        h = cv.text(169, y, 560, text, 24, role="brand", color="black", bold=True)
+        cv.text(60, y - 4, 60, f"{i})", 44, role="brand", color="brief_num", bold=True)
+        cv.image("brief_bar", 139.5, y - 6, 16.5, max(h + 8, 44 * cv.k * 1.2))
+        y += max(h, 44 * cv.k * 1.2) + 36 * cv.k
+    cv.image("divider_footer", 30.6, 990.8, 748.5, 14.2)
+    cv.crop(f"swipe_{lang}")
+    return y - 36 * cv.k
+
+
+def _deck_header_dark(cv, final, n, total):
+    cv.image("bg_dark", 0, -7.9, DECK_W, DECK_H)
+    cv.image("pillars", 124.6, 395.6, 685.5, 486.7)
+    cv.image("logo_white", 19.5, 9.1, 79.5, 79.5)
+    cv.crop("dark_header")
+    if cv.slide is not None:
+        rule = cv.slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Pt(102.5), Pt(30), Pt(1.2), Pt(52))
+        rule.fill.solid()
+        rule.fill.fore_color.rgb = RGBColor.from_string("C8CCD4")
+        rule.line.fill.background()
+        rule.shadow.inherit = False
+    cv.text(470, 35, 302, f"{_deck_date(final)} \u00b7 {n}/{total}", 20, role="display", color="white", bold=True,
+            align="right", scaled=False)
+
+
+def _slide_takeaway(cv, final, n, total):
+    lang = cv.lang
+    _deck_header_dark(cv, final, n, total)
+    cv.crop(f"takeaway_chip_{lang}")
+    t = final["takeaway"]
+    head = _deck_text(t, "headline", lang)
+    hs = 76
+    for hs in (76, 70, 64, 58, 52, 48, 44, 40, 36):
+        if _text_height(head, hs, 470, cv.kind_for("display"), True, 0.92) <= 500:
+            break
+    cv.text(37, 210, 470, head, hs, role="display", color="white", bold=True, spacing=0.92, scaled=False)
+    detail = _deck_text(t, "detail", lang)
+    ds = 26
+    for ds in (26, 24, 22, 20, 18):
+        if _text_height(detail, ds, 580, cv.kind_for("chip"), True, 1.0) <= 140:
+            break
+    cv.text(46, 727, 580, detail, ds, role="chip", color="white", bold=True, scaled=False)
+    cv.image("short_bar", 30.6, 882.6, 188.3, 14.2)
+    cv.image("share_icon", 46.2, 925.3, 78, 81)
+    follow = _deck_text(t, "follow", lang)
+    fs = 22
+    for fs in (22, 20, 18, 16):
+        if _text_height(follow, fs, 560, cv.kind_for("body"), False, 1.0) <= 100:
+            break
+    cv.text(135, 936, 560, follow, fs, role="body", color="white", scaled=False)
+    return min(500 - _text_height(head, hs, 470, cv.kind_for("display"), True, 0.92),
+               140 - _text_height(detail, ds, 580, cv.kind_for("chip"), True, 1.0))
+
+
+def make_qr_png(url: str, box: int = 12, border: int = 4) -> bytes:
+    """A QR code for `url` as PNG bytes (reportlab's encoder; error correction level M)."""
+    from reportlab.graphics.barcode.qrencoder import QRCode, QRErrorCorrectLevel
+    from PIL import Image, ImageDraw
+    qr = QRCode(None, QRErrorCorrectLevel.M)   # None = smallest QR version that fits the link
+    qr.addData(url)
+    qr.make()
+    n = qr.getModuleCount()
+    size = (n + 2 * border) * box
+    im = Image.new("RGB", (size, size), "white")
+    d = ImageDraw.Draw(im)
+    for r in range(n):
+        for c in range(n):
+            if qr.isDark(r, c):
+                x, y = (c + border) * box, (r + border) * box
+                d.rectangle([x, y, x + box - 1, y + box - 1], fill="black")
+    buf = _io.BytesIO()
+    im.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _slide_sources(cv, final, n, total, all_links):
+    lang = cv.lang
+    _deck_header_dark(cv, final, n, total)
+    cv.crop(f"sources_chip_{lang}")
+    url = (final.get("sources_url") or "").strip()
+    if url:
+        if cv.slide is not None:
+            sq = cv.slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Pt(218.7), Pt(333.4), Pt(412.6), Pt(412.6))
+            sq.fill.solid()
+            sq.fill.fore_color.rgb = RGBColor.from_string("FFFFFF")
+            sq.line.fill.background()
+            sq.shadow.inherit = False
+            cv.slide.shapes.add_picture(_io.BytesIO(make_qr_png(url, border=1)), Pt(236.7), Pt(351.4), Pt(376.6),
+                                        Pt(376.6))
+        cv.image("share_icon", 110.1, 950.4, 78, 81)
+        cv.crop(f"scan_{lang}")
+        return 1
+    names = []
+    for l in all_links:
+        if l["name"] not in names:
+            names.append(l["name"])
+    lines = ", ".join(names[:24])
+    cv.text(60, 300, 690, lines, 24, role="body", color="white", bold=True, scaled=False)
+    return 1
+
+
+# ---------------------------------------------------------------- layout: fit every slide
+DECK_SCALES = (1.0, 0.94, 0.88, 0.82, 0.76, 0.70, 0.64)
+
+
+def _deck_plan(final: dict, lang: str = "en") -> list:
+    """[(kind, payload)] for the slides that have content, in template order."""
+    plan = [("cover", None)]
+    for key, _title, _mx in DECK_SECTIONS:
+        st_ = deck_section_stories(final, key)
+        if st_:
+            plan.append((key, st_))
+    briefs = [b for b in final["briefs"] if b["include"]][:DECK_MAX_BRIEFS]
+    if briefs:
+        plan.append(("briefs", briefs))
+    plan += [("takeaway", None), ("sources", None)]
+    return plan
+
+
+def _deck_draw(kind, cv, final, n, total, payload, all_links):
+    if kind == "cover":
+        return _slide_cover(cv, final, n, total)
+    if kind == "top":
+        return DECK_BOTTOM - _slide_top(cv, final, n, total, payload)
+    if kind in ("national", "world", "biztech"):
+        return DECK_BOTTOM - _slide_flow(cv, final, n, total, payload, kind)
+    if kind == "state":
+        return DECK_BOTTOM - _slide_state(cv, final, n, total, payload)
+    if kind == "briefs":
+        return DECK_BOTTOM - _slide_briefs(cv, final, n, total, payload)
+    if kind == "takeaway":
+        return _slide_takeaway(cv, final, n, total)
+    return _slide_sources(cv, final, n, total, all_links)
+
+
+def _deck_fit(kind, final, n, total, payload, lang, images, all_links) -> tuple:
+    """(scale, room_left_pt): the largest text scale at which the slide fits; room < 0 means it doesn't."""
+    room = -1
+    for k in DECK_SCALES:
+        room = _deck_draw(kind, _DeckCanvas(None, lang, images, k), final, n, total, payload, all_links)
+        if room >= 0:
+            return k, room
+    return DECK_SCALES[-1], room
+
+
+def deck_overflow_report(final: dict, images=None, lang: str = "en") -> list:
+    """[(slide_number, title, points_over)] for slides whose text cannot fit even at the smallest size."""
+    plan = _deck_plan(final, lang)
+    links = [l for s in final["stories"] if s["include"] for l in s.get("links", [])]
+    out = []
+    titles = {"cover": "Cover", "top": "Top story", "national": "National developments", "state": "State developments",
+              "world": "World affairs", "biztech": "Business & technology", "briefs": "In brief",
+              "takeaway": "Today's takeaway", "sources": "Sources"}
+    for i, (kind, payload) in enumerate(plan, 1):
+        k, room = _deck_fit(kind, final, i, len(plan), payload, lang, images or {}, links)
+        if room < 0:
+            out.append((i, titles[kind], int(-room)))
+    return out
+
+
+# ---------------------------------------------------------------- review checks, approval, translation
+def review_problems(edit: dict, images=None, lang: str = "en") -> tuple:
+    """(errors, warnings). Errors block approval; warnings are shown to the editor."""
+    images = images or {}
+    errors, warnings = [], []
+    included = [s for s in edit["stories"] if s["include"]]
+    if not included:
+        errors.append("No stories are included -- tick at least one.")
+    if not deck_section_stories(edit, "top"):
+        errors.append("The top story (slide 2) is not included.")
+    for key, title, mx in DECK_SECTIONS:
+        n = len(deck_section_stories(edit, key))
+        if n > mx:
+            errors.append(f"{title.split(' -- ')[1]} has {n} stories ticked; the slide takes at most {mx}.")
+    for s in included:
+        name = f"\u201c{(s['headline'] or s['id'])[:60]}\u201d"
+        if not s["headline"].strip():
+            errors.append(f"{s['id']}: the headline is empty.")
+        if not s["summary"].strip():
+            errors.append(f"{name}: the summary is empty.")
+        if s["id"] in images and not s.get("image_credit", "").strip():
+            errors.append(f"{name}: an image is added but its credit is empty (image credits are never filled in "
+                          "automatically).")
+        words = len(s["summary"].split())
+        lo, hi = CAROUSEL_SUMMARY_WORDS
+        if s["summary"].strip() and not lo <= words <= hi and s["section"] in ("top",):
+            warnings.append(f"{name}: the summary is {words} words (the brief asks for {lo}-{hi}).")
+        open_flags = [f for f in s.get("flags", []) if not f.startswith("Only headlines")]
+        if open_flags:
+            warnings.append(f"{name}: draft flags to check -- " + "; ".join(open_flags))
+    if len([b for b in edit["briefs"] if b["include"]]) > DECK_MAX_BRIEFS:
+        errors.append(f"In brief has more than {DECK_MAX_BRIEFS} items ticked.")
+    if not edit["cover"]["hook"].strip():
+        errors.append("The cover line (hook) is empty.")
+    if not edit["takeaway"]["headline"].strip():
+        errors.append("The takeaway headline is empty.")
+    url = (edit.get("sources_url") or "").strip()
+    if url and not re.match(r"https?://\S+$", url):
+        errors.append("The sources link must start with http:// or https:// (it becomes the QR code).")
+    if not url:
+        warnings.append("No sources link: slide 9 will list the outlets instead of a QR code.")
+    for slide_no, title, over in deck_overflow_report(edit, images, lang):
+        errors.append(f"Slide {slide_no} ({title}) has too much text by about {over} pt even at the smallest "
+                      "size -- shorten it or untick a story.")
+    if not all(edit["checklist"].values()):
+        errors.append("Complete every item of the editorial checklist.")
+    if not (edit.get("approver") or "").strip():
+        errors.append("Enter the approving editor's name.")
+    return errors, warnings
+
+
+def finalize_carousel(edit: dict, images=None) -> dict:
+    """The approved final carousel (a copy of the review, stamped with who approved it and when).
+    Raises ValueError listing what still blocks approval."""
+    errors, _ = review_problems(edit, images)
+    if errors:
+        raise ValueError("Not ready for approval:\n- " + "\n- ".join(errors))
+    final = _copy.deepcopy(edit)
+    final["approved_by"] = edit["approver"].strip()
+    final["approved_at"] = f"{utc_now() + IST_OFFSET:%Y-%m-%d %H:%M} IST"
+    return final
+
+
+def _sarvam_translate(client, text: str) -> str:
+    resp = client.text.translate(input=text, source_language_code="en-IN", target_language_code="te-IN",
+                                 model="sarvam-translate:v1")
+    out = getattr(resp, "translated_text", None)
+    if out is None and isinstance(resp, dict):
+        out = resp.get("translated_text")
+    if not out or not str(out).strip():
+        raise ValueError("empty translation")
+    return str(out).strip()
+
+
+def translate_carousel(edit: dict, client, deadline_s: int = 90) -> list:
+    """Fill every Telugu field (edit[...]['te']) with Sarvam translations, in parallel. Fixed labels use the
+    template's own Telugu wording. Returns problems (fields left untranslated) -- those keep the English text
+    so the editor can see and fix them in the Telugu review."""
+    from concurrent.futures import ThreadPoolExecutor, wait
+    jobs = []
+    for s in edit["stories"]:
+        if not s["include"]:
+            continue
+        for field in ("headline", "summary", "image_caption"):
+            if s.get(field, "").strip():
+                jobs.append((s["te"], field, s[field]))
+        for i, b in enumerate(s.get("bullets") or []):
+            if b.strip():
+                s["te"].setdefault("bullets", [""] * len(s["bullets"]))
+                jobs.append((s["te"]["bullets"], i, b))
+    for b in edit["briefs"]:
+        if b["include"] and b["text"].strip():
+            jobs.append((b["te"], "text", b["text"]))
+    jobs.append((edit["cover"]["te"], "hook", edit["cover"]["hook"]))
+    t = edit["takeaway"]
+    for field in ("headline", "detail", "follow"):
+        if t.get(field, "").strip():
+            if t[field].strip() in TE_LABELS:
+                t["te"][field] = TE_LABELS[t[field].strip()]
+            else:
+                jobs.append((t["te"], field, t[field]))
+    problems = []
+
+    def run(job):
+        target, key, text = job
+        try:
+            target[key] = _sarvam_translate(client, text[:1900])
+        except Exception as e:
+            target[key] = text
+            problems.append(f"\u201c{text[:50]}\u201d: {_short_error(e)}")
+
+    pool = ThreadPoolExecutor(max_workers=6)
+    try:
+        futures = [pool.submit(run, j) for j in jobs]
+        done, late = wait(futures, timeout=deadline_s)
+        for f in late:
+            problems.append("a translation ran out of time")
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    for target, key, text in jobs:
+        if isinstance(target, dict) and key not in target:
+            target[key] = text
+    return problems
+
+
+def telugu_missing(edit: dict) -> list:
+    """Telugu fields still empty or still in English (to fix before building the Telugu deck)."""
+    out = []
+
+    def check(where, en, te):
+        if en.strip() and (not te.strip() or not _is_telugu(te)):
+            out.append(f"{where}: \u201c{en[:50]}\u201d")
+    for s in edit["stories"]:
+        if s["include"]:
+            check(f"{s['id']} headline", s["headline"], (s["te"] or {}).get("headline", ""))
+            check(f"{s['id']} summary", s["summary"], (s["te"] or {}).get("summary", ""))
+    for b in edit["briefs"]:
+        if b["include"]:
+            check(f"brief {b['id']}", b["text"], (b["te"] or {}).get("text", ""))
+    check("cover line", edit["cover"]["hook"], edit["cover"]["te"].get("hook", ""))
+    check("takeaway headline", edit["takeaway"]["headline"], edit["takeaway"]["te"].get("headline", ""))
+    return out
+
+
+# ---------------------------------------------------------------- build the PowerPoint
+def build_carousel_pptx(final: dict, images=None, lang: str = "en") -> bytes:
+    """The final carousel as a PowerPoint (.pptx) in the CamPen master-template format. `final` must come from
+    finalize_carousel(); `images` maps story ids to image bytes the editor uploaded."""
+    if Presentation is None:
+        raise RuntimeError("python-pptx isn't installed. Run:  pip install python-pptx")
+    if not os.path.isdir(CAROUSEL_ASSETS_DIR):
+        raise RuntimeError(f"The carousel_assets folder is missing (expected at {CAROUSEL_ASSETS_DIR}).")
+    if not final.get("approved_by"):
+        raise ValueError("Only an approved carousel can be built into final slides (use finalize_carousel).")
+    if lang == "te":
+        missing = telugu_missing(final)
+        if missing:
+            raise ValueError("These Telugu fields are not translated yet:\n- " + "\n- ".join(missing[:12]))
+    images = images or {}
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Pt(DECK_W), Pt(DECK_H)
+    blank = prs.slide_layouts[6]
+    plan = _deck_plan(final, lang)
+    links = [l for s in final["stories"] if s["include"] for l in s.get("links", [])]
+    for i, (kind, payload) in enumerate(plan, 1):
+        k, _room = _deck_fit(kind, final, i, len(plan), payload, lang, images, links)
+        slide = prs.slides.add_slide(blank)
+        _deck_draw(kind, _DeckCanvas(slide, lang, images, k), final, i, len(plan), payload, links)
+        items = payload if isinstance(payload, list) else []
+        notes = [f"{l['name']}: {l['url']}" for it in items for l in it.get("links", [])]
+        slide.notes_slide.notes_text_frame.text = ("Sources:\n" + "\n".join(notes)) if notes else \
+            f"Approved by {final['approved_by']} at {final['approved_at']}."
+    cp = prs.core_properties
+    cp.title = f"CamPen Media Daily Wrap {final['day']}" + (" (Telugu)" if lang == "te" else "")
+    cp.author = final["approved_by"]
+    cp.comments = f"Approved by {final['approved_by']} at {final['approved_at']}."
+    buf = _io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
+def carousel_sources_html(final: dict) -> str:
+    """A simple web page listing every story's source links -- host it and use its address for the QR code."""
+    import html as _h
+    d = _deck_long_date(final, "en")
+    rows = []
+    for key, title, _mx in DECK_SECTIONS:
+        for s in deck_section_stories(final, key):
+            links = "".join(f'<li><a href="{_h.escape(l["url"])}">{_h.escape(l["name"])}</a></li>' for l in s["links"])
+            rows.append(f"<h3>{_h.escape(s['headline'])}</h3><ul>{links}</ul>")
+    for b in [b for b in final["briefs"] if b["include"]]:
+        links = "".join(f'<li><a href="{_h.escape(l["url"])}">{_h.escape(l["name"])}</a></li>' for l in b["links"])
+        rows.append(f"<h3>{_h.escape(b['text'])}</h3><ul>{links}</ul>")
+    return ("<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>CamPen Media Daily Wrap -- sources -- {_h.escape(d)}</title>"
+            "<style>body{font-family:Arial,sans-serif;max-width:720px;margin:2em auto;padding:0 1em;color:#102848}"
+            "h1{font-size:1.5em}h3{font-size:1.05em;margin:1.4em 0 .3em}a{color:#1058C0}</style>"
+            f"<h1>CamPen Media \u00b7 Daily Wrap \u2014 sources</h1><p>{_h.escape(d)}</p>" + "".join(rows))
+
+
+# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
