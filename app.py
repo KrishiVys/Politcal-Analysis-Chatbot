@@ -27,6 +27,7 @@ NOTES
 """
 
 import os
+import io
 import re
 import glob
 import html
@@ -460,7 +461,8 @@ def render_carousel(c: dict, key_prefix: str) -> None:
     if c["used_template"]:
         st.caption("Sarvam AI wasn't available: stories were chosen by coverage and all writing is left to the editor.")
     st.caption(f"Generated {c['generated']}")
-    tabs = st.tabs(["🎠 Slides", "📝 Post copy", "♿ Alt text", "🗂️ Source log", "✅ Checklist", "🔎 Sources checked"])
+    tabs = st.tabs(["🎠 Slides", "📝 Post copy", "♿ Alt text", "🗂️ Source log", "✍️ Review & final slides",
+                    "🔎 Sources checked"])
     with tabs[0]:
         for sl in c["slides"]:
             n_items = len(sl["cards"]) + len(sl["briefs"])
@@ -492,9 +494,7 @@ def render_carousel(c: dict, key_prefix: str) -> None:
             "Main source": e["sources"][0]["url"] if e["sources"] else ""} for e in c["source_log"]]),
             use_container_width=True, hide_index=True)
     with tabs[4]:
-        st.caption("For the editor. Ticking these here does not approve, publish or schedule anything.")
-        for i, item in enumerate(c["checklist"]):
-            st.checkbox(item, key=f"{key_prefix}_chk_{i}")
+        render_editorial_review(c, key_prefix)
     with tabs[5]:
         render_sources_tab(c["status"])
     col1, col2 = st.columns(2)
@@ -518,6 +518,230 @@ def render_carousel(c: dict, key_prefix: str) -> None:
                 fname, content = st.session_state[f"{key_prefix}_cpdf"]
                 st.download_button("Download .pdf", content, file_name=fname, mime="application/pdf",
                                    key=f"{key_prefix}_cpdf_dl")
+
+
+STATUS_CHOICES = ["", "developing", "allegation", "disputed"]
+
+
+def _review_apply(edit: dict, images: dict, kp: str) -> list:
+    """Copy the saved review form into the review state. Returns problems with uploaded images."""
+    ss, problems = st.session_state, []
+    edit["cover"]["hook"] = ss.get(f"{kp}_rv_hook", edit["cover"]["hook"])
+    for s in edit["stories"]:
+        p = f"{kp}_rv_{s['id']}"
+        s["include"] = bool(ss.get(p + "_inc", s["include"]))
+        s["chip"] = ss.get(p + "_chip", s["chip"]).strip()
+        s["status"] = ss.get(p + "_status", s["status"])
+        if s["section"] == "state":
+            s["state"] = ss.get(p + "_state", s["state"])
+        s["headline"] = ss.get(p + "_head", s["headline"]).strip()
+        s["summary"] = ss.get(p + "_sum", s["summary"]).strip()
+        if s["section"] == "top":
+            s["bullets"] = [b.strip() for b in ss.get(p + "_bul", "\n".join(s["bullets"])).split("\n") if b.strip()]
+        s["image_caption"] = ss.get(p + "_cap", s["image_caption"]).strip()
+        s["image_credit"] = ss.get(p + "_credit", s["image_credit"]).strip()
+        up = ss.get(p + "_img")
+        if up is not None:
+            data = up.getvalue()
+            try:
+                from PIL import Image
+                Image.open(io.BytesIO(data)).verify()
+                images[s["id"]] = data
+            except Exception:
+                problems.append(f"The image for “{s['headline'][:50]}” couldn't be read -- use PNG, JPG or WebP.")
+        elif ss.get(p + "_noimg"):
+            images.pop(s["id"], None)
+    for b in edit["briefs"]:
+        p = f"{kp}_rv_{b['id']}"
+        b["include"] = bool(ss.get(p + "_inc", b["include"]))
+        b["text"] = ss.get(p + "_txt", b["text"]).strip()
+    t = edit["takeaway"]
+    t["headline"] = ss.get(f"{kp}_rv_tk_head", t["headline"]).strip()
+    t["detail"] = ss.get(f"{kp}_rv_tk_detail", t["detail"]).strip()
+    t["follow"] = ss.get(f"{kp}_rv_tk_follow", t["follow"]).strip()
+    edit["sources_url"] = ss.get(f"{kp}_rv_url", edit["sources_url"]).strip()
+    for i, item in enumerate(uc.CAROUSEL_CHECKLIST):
+        edit["checklist"][item] = bool(ss.get(f"{kp}_rv_chk_{i}", edit["checklist"][item]))
+    edit["approver"] = ss.get(f"{kp}_rv_approver", edit["approver"]).strip()
+    for k in (f"{kp}_deck_en", f"{kp}_deck_te"):      # anything built before this change is out of date
+        ss.pop(k, None)
+    return problems
+
+
+def _review_apply_telugu(edit: dict, kp: str) -> None:
+    ss = st.session_state
+    for s in edit["stories"]:
+        if not s["include"]:
+            continue
+        p = f"{kp}_te_{s['id']}"
+        for field in ("headline", "summary", "image_caption"):
+            if p + "_" + field in ss:
+                s["te"][field] = ss[p + "_" + field].strip()
+        if p + "_bullets" in ss:
+            s["te"]["bullets"] = [b.strip() for b in ss[p + "_bullets"].split("\n") if b.strip()]
+    for b in edit["briefs"]:
+        if b["include"] and f"{kp}_te_{b['id']}" in ss:
+            b["te"]["text"] = ss[f"{kp}_te_{b['id']}"].strip()
+    if f"{kp}_te_hook" in ss:
+        edit["cover"]["te"]["hook"] = ss[f"{kp}_te_hook"].strip()
+    for field in ("headline", "detail", "follow"):
+        if f"{kp}_te_tk_{field}" in ss:
+            edit["takeaway"]["te"][field] = ss[f"{kp}_te_tk_{field}"].strip()
+    ss.pop(f"{kp}_deck_te", None)
+
+
+def render_editorial_review(c: dict, kp: str) -> None:
+    """Editorial review of the draft, then the FINAL slides (PowerPoint, CamPen template) once approved."""
+    ek, ik = f"{kp}_edit", f"{kp}_imgs"
+    if ek not in st.session_state:
+        st.session_state[ek] = uc.carousel_edit_state(c)
+        st.session_state[ik] = {}
+    edit, images = st.session_state[ek], st.session_state[ik]
+    if uc.Presentation is None:
+        st.warning("Building the final slides needs python-pptx:  pip install python-pptx")
+    st.caption("Check and edit every story, add licensed images with their credits, complete the checklist and "
+               "approve. Only an approved review is built into the final slides, in the CamPen template.")
+
+    with st.form(f"{kp}_review_form"):
+        st.markdown("#### Slide 1 — Cover")
+        st.text_area("Cover line (hook)", edit["cover"]["hook"], key=f"{kp}_rv_hook", height=70)
+        for sec, title, mx in uc.DECK_SECTIONS:
+            group = [s for s in edit["stories"] if s["section"] == sec]
+            if not group:
+                continue
+            st.markdown(f"#### {title.replace('--', '—')}  ·  up to {mx}")
+            for s in group:
+                p = f"{kp}_rv_{s['id']}"
+                with st.expander(("✅ " if s["include"] else "⬜ ") + (s["headline"] or s["id"])[:90],
+                                 expanded=(sec == "top")):
+                    st.checkbox("Include on the slide", s["include"], key=p + "_inc")
+                    c1, c2 = st.columns(2)
+                    c1.text_input("Label chip", s["chip"], key=p + "_chip")
+                    c2.selectbox("Status tag", STATUS_CHOICES, index=STATUS_CHOICES.index(s["status"] or ""),
+                                 format_func=lambda v: v.title() if v else "None", key=p + "_status")
+                    if sec == "state":
+                        states = ["Telangana", "Andhra Pradesh"]
+                        st.selectbox("State", states, index=states.index(s["state"]) if s["state"] in states else 0,
+                                     key=p + "_state")
+                    st.text_input("Headline", s["headline"], key=p + "_head")
+                    st.text_area(f"Summary ({len(s['summary'].split())} words)", s["summary"], key=p + "_sum", height=110)
+                    if sec == "top":
+                        st.text_area("Key facts (one per line)", "\n".join(s["bullets"]), key=p + "_bul", height=90)
+                    st.file_uploader("Image (optional -- only one you are licensed to use)",
+                                     type=["png", "jpg", "jpeg", "webp"], key=p + "_img")
+                    if s["id"] in images:
+                        st.checkbox("Remove the current image", False, key=p + "_noimg")
+                    c3, c4 = st.columns(2)
+                    c3.text_input("Image caption", s["image_caption"], key=p + "_cap")
+                    c4.text_input("Image credit (required with an image)", s["image_credit"], key=p + "_credit")
+                    st.caption(s["verification"])
+                    for f in s["flags"]:
+                        st.caption(f"⚠️ {f}")
+                    if s["links"]:
+                        st.caption("Sources: " + " · ".join(f"[{l['name']}]({l['url']})" for l in s["links"][:5]))
+        if edit["briefs"]:
+            st.markdown(f"#### Slide 7 — In brief  ·  up to {uc.DECK_MAX_BRIEFS}")
+            for b in edit["briefs"]:
+                p = f"{kp}_rv_{b['id']}"
+                c1, c2 = st.columns([1, 9])
+                c1.checkbox("Use", b["include"], key=p + "_inc")
+                c2.text_input("Brief", b["text"], key=p + "_txt", label_visibility="collapsed")
+        st.markdown("#### Slide 8 — Today's takeaway")
+        t = edit["takeaway"]
+        st.text_input("Takeaway headline", t["headline"], key=f"{kp}_rv_tk_head")
+        st.text_area("Takeaway detail (e.g. what led the news in the Telugu states)", t["detail"], key=f"{kp}_rv_tk_detail",
+                     height=70)
+        st.text_input("Follow line", t["follow"], key=f"{kp}_rv_tk_follow")
+        st.markdown("#### Slide 9 — Sources")
+        st.text_input("Sources page link (becomes the QR code)", edit["sources_url"], key=f"{kp}_rv_url",
+                      help="Download the sources page below, host it (e.g. on your website or Google Drive) and "
+                           "paste its link here. Without a link, slide 9 lists the outlets instead.")
+        st.markdown("#### Editorial checklist")
+        for i, item in enumerate(uc.CAROUSEL_CHECKLIST):
+            st.checkbox(item, edit["checklist"][item], key=f"{kp}_rv_chk_{i}")
+        st.text_input("Approving editor", edit["approver"], key=f"{kp}_rv_approver")
+        saved = st.form_submit_button("💾 Save review")
+    if saved:
+        for msg in _review_apply(edit, images, kp):
+            st.error(msg)
+        st.success("Review saved.")
+
+    errors, warnings = uc.review_problems(edit, images)
+    if errors:
+        st.error("**Before approval:**\n" + "\n".join(f"- {e}" for e in errors))
+    if warnings:
+        with st.expander(f"⚠️ {len(warnings)} thing(s) to check"):
+            st.markdown("\n".join(f"- {w}" for w in warnings))
+    st.download_button("⬇️ Sources page (HTML) to host for the QR code", uc.carousel_sources_html(edit),
+                       file_name=f"CamPen_DailyWrap_{edit['day']}_sources.html", mime="text/html",
+                       key=f"{kp}_srcpage")
+
+    st.markdown("#### Final slides")
+    if st.button("✅ Approve & build the final slides (English)", key=f"{kp}_build_en",
+                 disabled=bool(errors) or uc.Presentation is None):
+        try:
+            final = uc.finalize_carousel(edit, images)
+            st.session_state[f"{kp}_deck_en"] = (f"CamPen_DailyWrap_{edit['day']}_EN.pptx",
+                                                 uc.build_carousel_pptx(final, images, "en"), final["approved_at"])
+        except Exception as e:
+            st.error(f"Couldn't build the slides: {e}")
+    if f"{kp}_deck_en" in st.session_state:
+        fname, data, when = st.session_state[f"{kp}_deck_en"]
+        st.success(f"Approved by {edit['approver']} at {when}.")
+        st.download_button("⬇️ Download the final slides (PowerPoint)", data, file_name=fname, key=f"{kp}_dl_en",
+                           mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+
+    st.markdown("#### Telugu slides")
+    if client is None:
+        st.caption("Translating to Telugu needs a Sarvam API key.")
+    if st.button("🔤 Translate the review to Telugu (Sarvam)", key=f"{kp}_translate", disabled=client is None):
+        with st.spinner("Translating..."):
+            problems = uc.translate_carousel(edit, client)
+        st.session_state.pop(f"{kp}_deck_te", None)
+        if problems:
+            st.warning("Some text couldn't be translated and was left in English -- fix it below:\n"
+                       + "\n".join(f"- {p}" for p in problems[:10]))
+    has_te = any(s["te"] for s in edit["stories"] if s["include"]) or edit["cover"]["te"]
+    if has_te:
+        with st.form(f"{kp}_te_form"):
+            st.caption("Check and edit the Telugu text before building the Telugu slides.")
+            st.text_area("Cover line", edit["cover"]["te"].get("hook", ""), key=f"{kp}_te_hook", height=70)
+            for s in [s for s in edit["stories"] if s["include"]]:
+                p = f"{kp}_te_{s['id']}"
+                with st.expander(s["headline"][:90]):
+                    st.text_input("శీర్షిక (headline)", s["te"].get("headline", ""), key=p + "_headline")
+                    st.text_area("సారాంశం (summary)", s["te"].get("summary", ""), key=p + "_summary", height=110)
+                    if s["section"] == "top":
+                        st.text_area("ముఖ్యాంశాలు (key facts, one per line)", "\n".join(s["te"].get("bullets", [])),
+                                     key=p + "_bullets", height=90)
+                    if s.get("image_caption"):
+                        st.text_input("Image caption", s["te"].get("image_caption", ""), key=p + "_image_caption")
+            for b in [b for b in edit["briefs"] if b["include"]]:
+                st.text_input(f"Brief: {b['text'][:60]}", b["te"].get("text", ""), key=f"{kp}_te_{b['id']}")
+            t = edit["takeaway"]
+            st.text_input("Takeaway headline", t["te"].get("headline", ""), key=f"{kp}_te_tk_headline")
+            st.text_area("Takeaway detail", t["te"].get("detail", ""), key=f"{kp}_te_tk_detail", height=70)
+            st.text_input("Follow line", t["te"].get("follow", ""), key=f"{kp}_te_tk_follow")
+            te_saved = st.form_submit_button("💾 Save Telugu text")
+        if te_saved:
+            _review_apply_telugu(edit, kp)
+            st.success("Telugu text saved.")
+        missing = uc.telugu_missing(edit)
+        if missing:
+            st.warning("Not translated yet:\n" + "\n".join(f"- {m}" for m in missing[:10]))
+        if st.button("✅ Approve & build the final slides (Telugu)", key=f"{kp}_build_te",
+                     disabled=bool(errors) or bool(missing) or uc.Presentation is None):
+            try:
+                final = uc.finalize_carousel(edit, images)
+                st.session_state[f"{kp}_deck_te"] = (f"CamPen_DailyWrap_{edit['day']}_TE.pptx",
+                                                     uc.build_carousel_pptx(final, images, "te"), final["approved_at"])
+            except Exception as e:
+                st.error(f"Couldn't build the Telugu slides: {e}")
+        if f"{kp}_deck_te" in st.session_state:
+            fname, data, when = st.session_state[f"{kp}_deck_te"]
+            st.download_button("⬇️ Download the final Telugu slides (PowerPoint)", data, file_name=fname,
+                               key=f"{kp}_dl_te",
+                               mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
 
 
 def render_wrap_downloads(wrap: dict, key_prefix: str) -> None:
