@@ -2856,6 +2856,8 @@ WRAP_PARTY_POLITICS_CAP = 12
 def resolve_wrap_party(name):
     """None for no party, else {name, short, search_terms, leaders, leads, match}.
     Raises ValueError for a party the tool doesn't know."""
+    if isinstance(name, dict):     # a ready-made subject: a leader, a constituency or a region (see the AP/TG site)
+        return name
     if not name or not str(name).strip():
         return None
     canon = _PARTY_LOOKUP.get(str(name).strip().lower())
@@ -2910,6 +2912,7 @@ def _party_searches(party: dict, state_key: str) -> tuple:
         focus.append(f"{build_news_query(party['leaders'])} {sq}")
     if state_key in party["leads"]:
         focus += WRAP_STATES[state_key]["focus_queries"]
+    focus += [f"{q} {sq}" for q in party.get("focus_extra", [])]    # e.g. a constituency's political searches
     return general, focus
 
 
@@ -2917,6 +2920,8 @@ def is_party_news(headline: str, party: dict, state_key: str) -> bool:
     """Names the party or one of its leaders -- or, for the party leading this
     state's government, is about that government's decisions."""
     h = headline or ""
+    if party.get("require") is not None and not party["require"].search(h):
+        return False          # e.g. a constituency wrap-up keeps only POLITICAL news about the place
     if party["match"].search(h):
         return True
     return state_key in party["leads"] and classify_story(h)["section"] in ("government", "policy", "ministries")
@@ -3049,7 +3054,20 @@ def _story_tags(s: dict, multi: bool) -> str:
 def _wrap_system_prompt(multi_day: bool = False, party=None, state_key: str = "") -> str:
     period = "a period of several days" if multi_day else "one day"
     party_intro, party_rule = "", ""
-    if party:
+    if party and party.get("kind") in ("leader", "region"):
+        who = party["name"]
+        party_intro = (
+            (f"THIS WRAP-UP IS ABOUT ONE POLITICAL LEADER: {who}. The stories have been filtered to ones naming them. "
+             f"Write from that angle: what {who} did, said, faced or decided. "
+             if party["kind"] == "leader" else
+             f"THIS WRAP-UP IS ABOUT THE POLITICS OF ONE AREA: {who}. The stories have been filtered to POLITICAL news "
+             "about it -- parties, leaders, elected representatives, elections and government decisions there. "
+             "Name the place each story concerns. ")
+            + "Stay strictly neutral: do not praise or criticise anyone.\n")
+        party_rule = (
+            "  Party Politics & Campaigns: campaigns, statements, leadership, alliances, rivalries, defections, "
+            "elections. Report claims as claims, attributed to whoever made them, never as established facts.\n")
+    elif party:
         leads = state_key in party["leads"]
         party_intro = (
             f"THIS WRAP-UP IS ABOUT ONE PARTY: the {party['name']} ({party['short']}). The stories have been filtered "
@@ -4365,7 +4383,10 @@ def _carousel_write_prompt(day) -> str:
         "or question headlines.\n"
         f"- summary: {lo}-{hi} words, from the material only. If the material is too thin for {lo} words, write fewer "
         "-- never pad with details that are not there.\n"
-        "- key_facts: 2-4 short facts stated in the material.\n"
+        "- key_facts: 2-4 KEY FACTS -- the most important concrete facts in the material: figures and amounts, "
+        "dates, names, places, decisions, outcomes. Each under 15 words and each adding something NEW: never repeat "
+        "the headline, another key fact, or a sentence of the summary word for word. Skip vague lines (\"stressed "
+        "its importance\"); put the most important fact first.\n"
         "- context: one sentence of background ONLY if the material supports it, otherwise \"\".\n"
         "- status: \"established\" (reported as fact by several outlets), \"developing\" (still unfolding; details may "
         "change), \"disputed\" (accounts conflict) or \"allegation\" (a claim by one party). Attribute allegations and "
@@ -4607,6 +4628,82 @@ def _numbers(text: str) -> set:
     return {n.replace(",", "").rstrip(".") for n in re.findall(r"\d[\d,]*(?:\.\d+)?", text or "")}
 
 
+_FACT_STOP = set("a an the of in on at to for and or but with by from as is are was were be been has have had it its "
+                 "this that these those which who will would could should may also into over after before than "
+                 "their his her they he she said says".split())
+_FACT_DECISION = re.compile(r"\b(approv|announc|pass|sanction|allocat|arrest|order|launch|sign|elect|win|won|lost|"
+                            r"resign|appoint|ban|stay|quash|dismiss|uphold|upheld|releas|cut|rais|hike|reduc|declar|"
+                            r"inaugurat|file|charge|convict|acquit|suspend|join|defect|merg|form|award|grant)", re.I)
+_FACT_VAGUE = re.compile(r"\b(stress|important|significan|key|crucial|various|several|discuss|highlight|underlin|"
+                         r"emphasi|noted|expressed)", re.I)
+_FACT_DATE = re.compile(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|"
+                        r"may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|"
+                        r"sept|oct|nov|dec|today|yesterday|tomorrow)\b", re.I)
+
+
+def _fact_words(text: str) -> set:
+    return {w.rstrip("s") for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if w not in _FACT_STOP and len(w) > 1}
+
+
+def _fact_overlap(a: str, b: str) -> float:
+    """Shared meaningful words as a share of the shorter text (1.0 = one says nothing the other doesn't)."""
+    wa, wb = _fact_words(a), _fact_words(b)
+    if not wa or not wb:
+        return 0.0
+    return len(wa & wb) / min(len(wa), len(wb))
+
+
+def fact_importance(text: str) -> int:
+    """How much hard fact a line carries: figures, amounts, dates, names and decisions count; vague words don't."""
+    t = text or ""
+    score = 3 * min(2, len(re.findall(r"(?:₹|rs\.?\s*)?\d[\d,.]*\s*(?:%|per cent|crore|lakh|million|billion|km|mw|acres)?",
+                                     t, re.I)))
+    score += 2 * min(1, len(_FACT_DATE.findall(t)))
+    score += min(3, len(re.findall(r"(?<!^)(?<![.!?]\s)\b[A-Z][a-zA-Z]{2,}", t)))
+    score += 2 if _FACT_DECISION.search(t) else 0
+    score -= 2 if _FACT_VAGUE.search(t) else 0
+    score -= 1 if len(t.split()) > 18 else 0
+    return score
+
+
+def select_key_facts(candidates: list, headline: str, summary: str, excerpt: str = "", max_n: int = 4) -> list:
+    """The key facts for a story card: the most important concrete facts, each saying something new.
+
+    A candidate is dropped if it repeats the headline, a fact already kept, or a sentence of the summary word for
+    word. If fewer than two remain, sentences of the ARTICLE TEXT that carry hard facts and add something the summary
+    doesn't say are used. Kept facts are ordered most important first."""
+    summary_sents = [x for x in split_sentences(summary or "") if x.strip()]
+
+    def repeats(f, kept):
+        if _fact_overlap(f, headline) >= 0.75:
+            return True
+        if any(_fact_overlap(f, k) >= 0.6 for k in kept):
+            return True
+        return any(_fact_overlap(f, ss) >= 0.9 and len(f.split()) >= 0.7 * len(ss.split()) for ss in summary_sents)
+
+    kept = []
+    for f in candidates:
+        f = " ".join(str(f).split()).strip(" -•")
+        if f and not repeats(f, kept):
+            kept.append(f)
+    if len(kept) < 2 and excerpt:
+        for sent in split_sentences(excerpt):
+            sent = " ".join(sent.split())
+            words = sent.split()
+            if len(words) > 22:
+                sent = " ".join(words[:20]) + "…"
+            adds_new = all(_fact_overlap(sent, ss) < 0.6 for ss in summary_sents)
+            if fact_importance(sent) >= 4 and adds_new and not repeats(sent, kept):
+                kept.append(sent)
+            if len(kept) >= max_n:
+                break
+    kept.sort(key=fact_importance, reverse=True)       # stable: equally important facts keep the AI's order
+    solid = [f for f in kept if fact_importance(f) > 0]
+    if len(solid) >= 2:                                 # vague lines go when there are real facts to show
+        kept = solid
+    return kept[:max_n]
+
+
 def _carousel_card(s: dict, ai: dict, day, all_names=None) -> dict:
     ai = ai if isinstance(ai, dict) else {}
     lo, hi = CAROUSEL_SUMMARY_WORDS
@@ -4627,12 +4724,15 @@ def _carousel_card(s: dict, ai: dict, day, all_names=None) -> dict:
             out.append(sent)
         summary = " ".join(out) or " ".join(s["excerpt"].split()[:CAROUSEL_SUMMARY_WORDS[1]])
         extracted = True
-    facts = [_clean_point(f, names) for f in (ai.get("key_facts") or []) if str(f).strip()][:4] if isinstance(ai.get("key_facts"), list) else []
-    if not facts:   # without the AI: what each outlet's headline says -- attributed, not restated as fact
-        facts = [f'{it.get("source", "")}: "{it["headline"]}"' for it in s["items"][:3]]
+    ai_facts = [_clean_point(f, names) for f in (ai.get("key_facts") or []) if str(f).strip()] \
+        if isinstance(ai.get("key_facts"), list) else []
+    facts = select_key_facts(ai_facts, headline, summary, s.get("excerpt") or "")
     context = _clean_point(ai.get("context"), names) if ai.get("context") else ""
     flags = []
     words = len(summary.split())
+    if len(facts) < 2:
+        flags.append(f"Only {len(facts)} distinct key fact(s) -- add the most important facts (figures, dates, names, "
+                     "decisions) from the sources")
     if extracted:
         flags.append(f"Summary is an extract from {s.get('excerpt_source') or 'the source'}'s article (the AI summary "
                      "wasn't available) -- rewrite it in your own words before use")
@@ -5566,7 +5666,12 @@ def _deck_bullets(story: dict, lang: str) -> list:
     v = (story.get("te") or {}).get("bullets") if lang == "te" else story.get("bullets")
     if isinstance(v, str):
         v = [x for x in v.split("\n")]
-    return [x.strip() for x in (v or []) if x and x.strip()]
+    out = []
+    for x in (v or []):
+        x = (x or "").strip()
+        if x and not any(x.lower() == o.lower() or (lang == "en" and _fact_overlap(x, o) >= 0.6) for o in out):
+            out.append(x)
+    return out
 
 
 def _deck_header_light(cv, final, n, total):
