@@ -1,0 +1,5010 @@
+{
+ "source": "Assembly and Lok Sabha constituencies: Delimitation of Parliamentary and Assembly Constituencies Order (Election Commission of India), as listed on Wikipedia (fetched Oct 2026) and validated: 175 + 119 seats, SC/ST seats checked name by name, 7 Assembly segments per Lok Sabha seat.",
+ "assembly": [
+  {
+   "state": "Telangana",
+   "ac_no": 1,
+   "name": "Sirpur",
+   "reserved": null,
+   "districts": [
+    "Komaram Bheem Asifabad",
+    "Mancherial"
+   ],
+   "lok_sabha": "Adilabad",
+   "electors": 231455,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 2,
+   "name": "Chennur",
+   "reserved": "SC",
+   "districts": [
+    "Mancherial"
+   ],
+   "lok_sabha": "Peddapalli",
+   "electors": 176455,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 3,
+   "name": "Bellampalli",
+   "reserved": "SC",
+   "districts": [
+    "Mancherial"
+   ],
+   "lok_sabha": "Peddapalli",
+   "electors": 178586,
+   "aliases": [
+    "Bellampally"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 4,
+   "name": "Mancherial",
+   "reserved": null,
+   "districts": [
+    "Mancherial"
+   ],
+   "lok_sabha": "Peddapalli",
+   "electors": 282118,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 5,
+   "name": "Asifabad",
+   "reserved": "ST",
+   "districts": [
+    "Komaram Bheem Asifabad",
+    "Adilabad"
+   ],
+   "lok_sabha": "Adilabad",
+   "electors": 229765,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 6,
+   "name": "Khanapur",
+   "reserved": "ST",
+   "districts": [
+    "Adilabad",
+    "Mancherial",
+    "Nirmal"
+   ],
+   "lok_sabha": "Adilabad",
+   "electors": 228151,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 7,
+   "name": "Adilabad",
+   "reserved": null,
+   "districts": [
+    "Adilabad"
+   ],
+   "lok_sabha": "Adilabad",
+   "electors": 248109,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 8,
+   "name": "Boath",
+   "reserved": "ST",
+   "districts": [
+    "Adilabad"
+   ],
+   "lok_sabha": "Adilabad",
+   "electors": 214588,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 9,
+   "name": "Nirmal",
+   "reserved": null,
+   "districts": [
+    "Nirmal"
+   ],
+   "lok_sabha": "Adilabad",
+   "electors": 261087,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 10,
+   "name": "Mudhole",
+   "reserved": null,
+   "districts": [
+    "Nirmal"
+   ],
+   "lok_sabha": "Adilabad",
+   "electors": 258406,
+   "aliases": [
+    "Mudhol"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 11,
+   "name": "Armur",
+   "reserved": null,
+   "districts": [
+    "Nizamabad"
+   ],
+   "lok_sabha": "Nizamabad",
+   "electors": 214266,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 12,
+   "name": "Bodhan",
+   "reserved": null,
+   "districts": [
+    "Nizamabad"
+   ],
+   "lok_sabha": "Nizamabad",
+   "electors": 224941,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 13,
+   "name": "Jukkal",
+   "reserved": "SC",
+   "districts": [
+    "Kamareddy",
+    "Sangareddy"
+   ],
+   "lok_sabha": "Zahirabad",
+   "electors": 252432,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 14,
+   "name": "Banswada",
+   "reserved": null,
+   "districts": [
+    "Kamareddy"
+   ],
+   "lok_sabha": "Zahirabad",
+   "electors": 198939,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 15,
+   "name": "Yellareddy",
+   "reserved": null,
+   "districts": [
+    "Kamareddy"
+   ],
+   "lok_sabha": "Zahirabad",
+   "electors": 226145,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 16,
+   "name": "Kamareddy",
+   "reserved": null,
+   "districts": [
+    "Kamareddy"
+   ],
+   "lok_sabha": "Zahirabad",
+   "electors": 258223,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 17,
+   "name": "Nizamabad Urban",
+   "reserved": null,
+   "districts": [
+    "Nizamabad"
+   ],
+   "lok_sabha": "Nizamabad",
+   "electors": 307524,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 18,
+   "name": "Nizamabad Rural",
+   "reserved": null,
+   "districts": [
+    "Nizamabad"
+   ],
+   "lok_sabha": "Nizamabad",
+   "electors": 260676,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 19,
+   "name": "Balkonda",
+   "reserved": null,
+   "districts": [
+    "Nizamabad",
+    "Rajanna Sircilla"
+   ],
+   "lok_sabha": "Nizamabad",
+   "electors": 229696,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 20,
+   "name": "Koratla",
+   "reserved": null,
+   "districts": [
+    "Jagtial"
+   ],
+   "lok_sabha": "Nizamabad",
+   "electors": 248320,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 21,
+   "name": "Jagtial",
+   "reserved": null,
+   "districts": [
+    "Jagtial"
+   ],
+   "lok_sabha": "Nizamabad",
+   "electors": 239160,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 22,
+   "name": "Dharmapuri",
+   "reserved": "SC",
+   "districts": [
+    "Jagtial",
+    "Peddapalli"
+   ],
+   "lok_sabha": "Peddapalli",
+   "electors": 233323,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 23,
+   "name": "Ramagundam",
+   "reserved": null,
+   "districts": [
+    "Peddapalli"
+   ],
+   "lok_sabha": "Peddapalli",
+   "electors": 216389,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 24,
+   "name": "Manthani",
+   "reserved": null,
+   "districts": [
+    "Jayashankar Bhupalpally",
+    "Peddapalli"
+   ],
+   "lok_sabha": "Peddapalli",
+   "electors": 240935,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 25,
+   "name": "Peddapalle",
+   "reserved": null,
+   "districts": [
+    "Peddapalli"
+   ],
+   "lok_sabha": "Peddapalli",
+   "electors": 260719,
+   "aliases": [
+    "Peddapalli"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 26,
+   "name": "Karimnagar",
+   "reserved": null,
+   "districts": [
+    "Karimnagar"
+   ],
+   "lok_sabha": "Karimnagar",
+   "electors": 368269,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 27,
+   "name": "Choppadandi",
+   "reserved": "SC",
+   "districts": [
+    "Jagtial",
+    "Karimnagar",
+    "Rajanna Sircilla"
+   ],
+   "lok_sabha": "Karimnagar",
+   "electors": 236053,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 28,
+   "name": "Vemulawada",
+   "reserved": null,
+   "districts": [
+    "Jagtial",
+    "Rajanna Sircilla"
+   ],
+   "lok_sabha": "Karimnagar",
+   "electors": 228164,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 29,
+   "name": "Sircilla",
+   "reserved": null,
+   "districts": [
+    "Rajanna Sircilla"
+   ],
+   "lok_sabha": "Karimnagar",
+   "electors": 248440,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 30,
+   "name": "Manakondur",
+   "reserved": "SC",
+   "districts": [
+    "Karimnagar",
+    "Rajanna Sircilla",
+    "Siddipet"
+   ],
+   "lok_sabha": "Karimnagar",
+   "electors": 226525,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 31,
+   "name": "Huzurabad",
+   "reserved": null,
+   "districts": [
+    "Karimnagar",
+    "Hanumakonda"
+   ],
+   "lok_sabha": "Karimnagar",
+   "electors": 252518,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 32,
+   "name": "Husnabad",
+   "reserved": null,
+   "districts": [
+    "Karimnagar",
+    "Siddipet",
+    "Hanumakonda"
+   ],
+   "lok_sabha": "Karimnagar",
+   "electors": 251150,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 33,
+   "name": "Siddipet",
+   "reserved": null,
+   "districts": [
+    "Siddipet"
+   ],
+   "lok_sabha": "Medak",
+   "electors": 240142,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 34,
+   "name": "Medak",
+   "reserved": null,
+   "districts": [
+    "Medak"
+   ],
+   "lok_sabha": "Medak",
+   "electors": 220997,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 35,
+   "name": "Narayankhed",
+   "reserved": null,
+   "districts": [
+    "Medak",
+    "Sangareddy"
+   ],
+   "lok_sabha": "Zahirabad",
+   "electors": 237485,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 36,
+   "name": "Andole",
+   "reserved": "SC",
+   "districts": [
+    "Medak",
+    "Sangareddy"
+   ],
+   "lok_sabha": "Zahirabad",
+   "electors": 252684,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 37,
+   "name": "Narsapur",
+   "reserved": null,
+   "districts": [
+    "Medak"
+   ],
+   "lok_sabha": "Medak",
+   "electors": 230355,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 38,
+   "name": "Zahirabad",
+   "reserved": "SC",
+   "districts": [
+    "Sangareddy"
+   ],
+   "lok_sabha": "Zahirabad",
+   "electors": 239483,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 39,
+   "name": "Sangareddy",
+   "reserved": null,
+   "districts": [
+    "Sangareddy"
+   ],
+   "lok_sabha": "Medak",
+   "electors": 215382,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 40,
+   "name": "Patancheru",
+   "reserved": null,
+   "districts": [
+    "Sangareddy"
+   ],
+   "lok_sabha": "Medak",
+   "electors": 419569,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 41,
+   "name": "Dubbak",
+   "reserved": null,
+   "districts": [
+    "Medak",
+    "Siddipet"
+   ],
+   "lok_sabha": "Medak",
+   "electors": 201567,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 42,
+   "name": "Gajwel",
+   "reserved": null,
+   "districts": [
+    "Medak",
+    "Siddipet"
+   ],
+   "lok_sabha": "Medak",
+   "electors": 285516,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 43,
+   "name": "Medchal",
+   "reserved": null,
+   "districts": [
+    "Medchal-Malkajgiri"
+   ],
+   "lok_sabha": "Malkajgiri",
+   "electors": 672534,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 44,
+   "name": "Malkajgiri",
+   "reserved": null,
+   "districts": [
+    "Medchal-Malkajgiri"
+   ],
+   "lok_sabha": "Malkajgiri",
+   "electors": 513356,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 45,
+   "name": "Quthbullapur",
+   "reserved": null,
+   "districts": [
+    "Medchal-Malkajgiri"
+   ],
+   "lok_sabha": "Malkajgiri",
+   "electors": 734155,
+   "aliases": [
+    "Qutbullapur",
+    "Quthbullapur"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 46,
+   "name": "Kukatpally",
+   "reserved": null,
+   "districts": [
+    "Medchal-Malkajgiri"
+   ],
+   "lok_sabha": "Malkajgiri",
+   "electors": 486094,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 47,
+   "name": "Uppal",
+   "reserved": null,
+   "districts": [
+    "Medchal-Malkajgiri"
+   ],
+   "lok_sabha": "Malkajgiri",
+   "electors": 543112,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 48,
+   "name": "Ibrahimpatnam",
+   "reserved": null,
+   "districts": [
+    "Ranga Reddy"
+   ],
+   "lok_sabha": "Bhongir",
+   "electors": 343029,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 49,
+   "name": "Lal Bahadur Nagar",
+   "reserved": null,
+   "districts": [
+    "Ranga Reddy",
+    "Medchal-Malkajgiri"
+   ],
+   "lok_sabha": "Malkajgiri",
+   "electors": 606190,
+   "aliases": [
+    "LB Nagar",
+    "L.B. Nagar",
+    "L B Nagar"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 50,
+   "name": "Maheshwaram",
+   "reserved": null,
+   "districts": [
+    "Ranga Reddy"
+   ],
+   "lok_sabha": "Chevella",
+   "electors": 564125,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 51,
+   "name": "Rajendranagar",
+   "reserved": null,
+   "districts": [
+    "Ranga Reddy"
+   ],
+   "lok_sabha": "Chevella",
+   "electors": 619158,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 52,
+   "name": "Serilingampally",
+   "reserved": null,
+   "districts": [
+    "Ranga Reddy",
+    "Medchal-Malkajgiri"
+   ],
+   "lok_sabha": "Chevella",
+   "electors": 765982,
+   "aliases": [
+    "Serilingampalli",
+    "Sherilingampally"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 53,
+   "name": "Chevella",
+   "reserved": "SC",
+   "districts": [
+    "Ranga Reddy",
+    "Vikarabad"
+   ],
+   "lok_sabha": "Chevella",
+   "electors": 274376,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 54,
+   "name": "Pargi",
+   "reserved": null,
+   "districts": [
+    "Mahabubnagar",
+    "Vikarabad"
+   ],
+   "lok_sabha": "Chevella",
+   "electors": 271307,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 55,
+   "name": "Vikarabad",
+   "reserved": "SC",
+   "districts": [
+    "Vikarabad"
+   ],
+   "lok_sabha": "Chevella",
+   "electors": 235012,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 56,
+   "name": "Tandur",
+   "reserved": null,
+   "districts": [
+    "Vikarabad"
+   ],
+   "lok_sabha": "Chevella",
+   "electors": 247836,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 57,
+   "name": "Musheerabad",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Secunderabad",
+   "electors": 308839,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 58,
+   "name": "Malakpet",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Hyderabad",
+   "electors": 318914,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 59,
+   "name": "Amberpet",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Secunderabad",
+   "electors": 280914,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 60,
+   "name": "Khairatabad",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Secunderabad",
+   "electors": 294603,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 61,
+   "name": "Jubilee Hills",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Secunderabad",
+   "electors": 389972,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 62,
+   "name": "Sanathnagar",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Secunderabad",
+   "electors": 254366,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 63,
+   "name": "Nampally",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Secunderabad",
+   "electors": 330538,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 64,
+   "name": "Karwan",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Hyderabad",
+   "electors": 365236,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 65,
+   "name": "Goshamahal",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Hyderabad",
+   "electors": 277086,
+   "aliases": [
+    "Gosha Mahal"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 66,
+   "name": "Charminar",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Hyderabad",
+   "electors": 232525,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 67,
+   "name": "Chandrayangutta",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Hyderabad",
+   "electors": 354726,
+   "aliases": [
+    "Chandrayan Gutta"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 68,
+   "name": "Yakutpura",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Hyderabad",
+   "electors": 366143,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 69,
+   "name": "Bahadurpura",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Hyderabad",
+   "electors": 326267,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 70,
+   "name": "Secunderabad",
+   "reserved": null,
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Secunderabad",
+   "electors": 268743,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 71,
+   "name": "Secunderabad Cantonment",
+   "reserved": "SC",
+   "districts": [
+    "Hyderabad"
+   ],
+   "lok_sabha": "Malkajgiri",
+   "electors": 255320,
+   "aliases": [
+    "Secunderabad Cantt"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 72,
+   "name": "Kodangal",
+   "reserved": null,
+   "districts": [
+    "Mahabubnagar",
+    "Vikarabad"
+   ],
+   "lok_sabha": "Mahabubnagar",
+   "electors": 246696,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 73,
+   "name": "Narayanpet",
+   "reserved": null,
+   "districts": [
+    "Narayanpet"
+   ],
+   "lok_sabha": "Mahabubnagar",
+   "electors": 238800,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 74,
+   "name": "Mahbubnagar",
+   "reserved": null,
+   "districts": [
+    "Mahabubnagar"
+   ],
+   "lok_sabha": "Mahabubnagar",
+   "electors": 262627,
+   "aliases": [
+    "Mahabubnagar"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 75,
+   "name": "Jadcherla",
+   "reserved": null,
+   "districts": [
+    "Mahabubnagar",
+    "Nagarkurnool"
+   ],
+   "lok_sabha": "Mahabubnagar",
+   "electors": 224739,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 76,
+   "name": "Devarkadra",
+   "reserved": null,
+   "districts": [
+    "Mahabubnagar",
+    "Wanaparthy"
+   ],
+   "lok_sabha": "Mahabubnagar",
+   "electors": 241173,
+   "aliases": [
+    "Devarakadra"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 77,
+   "name": "Makthal",
+   "reserved": null,
+   "districts": [
+    "Mahabubnagar",
+    "Wanaparthy"
+   ],
+   "lok_sabha": "Mahabubnagar",
+   "electors": 248170,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 78,
+   "name": "Wanaparthy",
+   "reserved": null,
+   "districts": [
+    "Wanaparthy"
+   ],
+   "lok_sabha": "Nagarkurnool",
+   "electors": 246511,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 79,
+   "name": "Gadwal",
+   "reserved": null,
+   "districts": [
+    "Jogulamba Gadwal"
+   ],
+   "lok_sabha": "Nagarkurnool",
+   "electors": 234633,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 80,
+   "name": "Alampur",
+   "reserved": "SC",
+   "districts": [
+    "Jogulamba Gadwal"
+   ],
+   "lok_sabha": "Nagarkurnool",
+   "electors": 241587,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 81,
+   "name": "Nagarkurnool",
+   "reserved": null,
+   "districts": [
+    "Nagarkurnool"
+   ],
+   "lok_sabha": "Nagarkurnool",
+   "electors": 237640,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 82,
+   "name": "Achampet",
+   "reserved": "SC",
+   "districts": [
+    "Nagarkurnool"
+   ],
+   "lok_sabha": "Nagarkurnool",
+   "electors": 249796,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 83,
+   "name": "Kalwakurthy",
+   "reserved": null,
+   "districts": [
+    "Nagarkurnool",
+    "Ranga Reddy"
+   ],
+   "lok_sabha": "Nagarkurnool",
+   "electors": 246659,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 84,
+   "name": "Shadnagar",
+   "reserved": null,
+   "districts": [
+    "Ranga Reddy"
+   ],
+   "lok_sabha": "Mahabubnagar",
+   "electors": 243316,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 85,
+   "name": "Kollapur",
+   "reserved": null,
+   "districts": [
+    "Nagarkurnool",
+    "Wanaparthy"
+   ],
+   "lok_sabha": "Nagarkurnool",
+   "electors": 241642,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 86,
+   "name": "Devarakonda",
+   "reserved": "ST",
+   "districts": [
+    "Nalgonda"
+   ],
+   "lok_sabha": "Nalgonda",
+   "electors": 264522,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 87,
+   "name": "Nagarjuna Sagar",
+   "reserved": null,
+   "districts": [
+    "Nalgonda"
+   ],
+   "lok_sabha": "Nalgonda",
+   "electors": 237697,
+   "aliases": [
+    "Nagarjunasagar"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 88,
+   "name": "Miryalaguda",
+   "reserved": null,
+   "districts": [
+    "Nalgonda"
+   ],
+   "lok_sabha": "Nalgonda",
+   "electors": 237674,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 89,
+   "name": "Huzurnagar",
+   "reserved": null,
+   "districts": [
+    "Suryapet"
+   ],
+   "lok_sabha": "Nalgonda",
+   "electors": 253229,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 90,
+   "name": "Kodad",
+   "reserved": null,
+   "districts": [
+    "Suryapet"
+   ],
+   "lok_sabha": "Nalgonda",
+   "electors": 247368,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 91,
+   "name": "Suryapet",
+   "reserved": null,
+   "districts": [
+    "Suryapet"
+   ],
+   "lok_sabha": "Nalgonda",
+   "electors": 246539,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 92,
+   "name": "Nalgonda",
+   "reserved": null,
+   "districts": [
+    "Nalgonda"
+   ],
+   "lok_sabha": "Nalgonda",
+   "electors": 251491,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 93,
+   "name": "Munugode",
+   "reserved": null,
+   "districts": [
+    "Nalgonda",
+    "Yadadri Bhuvanagiri"
+   ],
+   "lok_sabha": "Bhongir",
+   "electors": 259976,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 94,
+   "name": "Bhongir",
+   "reserved": null,
+   "districts": [
+    "Yadadri Bhuvanagiri"
+   ],
+   "lok_sabha": "Bhongir",
+   "electors": 222705,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 95,
+   "name": "Nakrekal",
+   "reserved": "SC",
+   "districts": [
+    "Nalgonda",
+    "Yadadri Bhuvanagiri"
+   ],
+   "lok_sabha": "Bhongir",
+   "electors": 255419,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 96,
+   "name": "Thungathurthi",
+   "reserved": "SC",
+   "districts": [
+    "Nalgonda",
+    "Suryapet",
+    "Yadadri Bhuvanagiri"
+   ],
+   "lok_sabha": "Bhongir",
+   "electors": 261497,
+   "aliases": [
+    "Tungaturthi",
+    "Thungathurthy"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 97,
+   "name": "Alair",
+   "reserved": null,
+   "districts": [
+    "Jangaon",
+    "Yadadri Bhuvanagiri"
+   ],
+   "lok_sabha": "Bhongir",
+   "electors": 238352,
+   "aliases": [
+    "Aler"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 98,
+   "name": "Jangaon",
+   "reserved": null,
+   "districts": [
+    "Jangaon",
+    "Siddipet"
+   ],
+   "lok_sabha": "Bhongir",
+   "electors": 246106,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 99,
+   "name": "Ghanpur Station",
+   "reserved": "SC",
+   "districts": [
+    "Jangaon",
+    "Hanumakonda"
+   ],
+   "lok_sabha": "Warangal",
+   "electors": 257530,
+   "aliases": [
+    "Station Ghanpur"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 100,
+   "name": "Palakurthi",
+   "reserved": null,
+   "districts": [
+    "Jangaon",
+    "Mahabubabad",
+    "Warangal"
+   ],
+   "lok_sabha": "Warangal",
+   "electors": 258470,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 101,
+   "name": "Dornakal",
+   "reserved": "ST",
+   "districts": [
+    "Mahabubabad"
+   ],
+   "lok_sabha": "Mahabubabad",
+   "electors": 224833,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 102,
+   "name": "Mahabubabad",
+   "reserved": "ST",
+   "districts": [
+    "Mahabubabad"
+   ],
+   "lok_sabha": "Mahabubabad",
+   "electors": 260859,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 103,
+   "name": "Narsampet",
+   "reserved": null,
+   "districts": [
+    "Warangal"
+   ],
+   "lok_sabha": "Mahabubabad",
+   "electors": 237691,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 104,
+   "name": "Parkal",
+   "reserved": null,
+   "districts": [
+    "Warangal",
+    "Hanumakonda"
+   ],
+   "lok_sabha": "Warangal",
+   "electors": 223367,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 105,
+   "name": "Warangal West",
+   "reserved": null,
+   "districts": [
+    "Hanumakonda"
+   ],
+   "lok_sabha": "Warangal",
+   "electors": 285251,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 106,
+   "name": "Warangal East",
+   "reserved": null,
+   "districts": [
+    "Hanumakonda"
+   ],
+   "lok_sabha": "Warangal",
+   "electors": 259835,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 107,
+   "name": "Wardhannapet",
+   "reserved": "SC",
+   "districts": [
+    "Warangal",
+    "Hanumakonda"
+   ],
+   "lok_sabha": "Warangal",
+   "electors": 275927,
+   "aliases": [
+    "Waradhanapet",
+    "Vardhannapet"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 108,
+   "name": "Bhupalpalle",
+   "reserved": null,
+   "districts": [
+    "Jayashankar Bhupalpally",
+    "Warangal"
+   ],
+   "lok_sabha": "Warangal",
+   "electors": 278185,
+   "aliases": [
+    "Bhupalpally"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 109,
+   "name": "Mulug",
+   "reserved": "ST",
+   "districts": [
+    "Mulugu",
+    "Mahabubabad"
+   ],
+   "lok_sabha": "Mahabubabad",
+   "electors": 235486,
+   "aliases": [
+    "Mulugu"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 110,
+   "name": "Pinapaka",
+   "reserved": "ST",
+   "districts": [
+    "Bhadradri Kothagudem"
+   ],
+   "lok_sabha": "Mahabubabad",
+   "electors": 205182,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 111,
+   "name": "Yellandu",
+   "reserved": "ST",
+   "districts": [
+    "Bhadradri Kothagudem",
+    "Khammam",
+    "Mahabubabad"
+   ],
+   "lok_sabha": "Mahabubabad",
+   "electors": 226815,
+   "aliases": [
+    "Illandu"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 112,
+   "name": "Khammam",
+   "reserved": null,
+   "districts": [
+    "Khammam"
+   ],
+   "lok_sabha": "Khammam",
+   "electors": 324308,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 113,
+   "name": "Palair",
+   "reserved": null,
+   "districts": [
+    "Khammam"
+   ],
+   "lok_sabha": "Khammam",
+   "electors": 243051,
+   "aliases": [
+    "Paleru"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 114,
+   "name": "Madhira",
+   "reserved": "SC",
+   "districts": [
+    "Khammam"
+   ],
+   "lok_sabha": "Khammam",
+   "electors": 223510,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 115,
+   "name": "Wyra",
+   "reserved": "ST",
+   "districts": [
+    "Bhadradri Kothagudem",
+    "Khammam"
+   ],
+   "lok_sabha": "Khammam",
+   "electors": 194738,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 116,
+   "name": "Sathupalli",
+   "reserved": "SC",
+   "districts": [
+    "Khammam"
+   ],
+   "lok_sabha": "Khammam",
+   "electors": 245653,
+   "aliases": [
+    "Sathupally"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 117,
+   "name": "Kothagudem",
+   "reserved": null,
+   "districts": [
+    "Bhadradri Kothagudem"
+   ],
+   "lok_sabha": "Khammam",
+   "electors": 248390,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 118,
+   "name": "Aswaraopeta",
+   "reserved": "ST",
+   "districts": [
+    "Bhadradri Kothagudem"
+   ],
+   "lok_sabha": "Khammam",
+   "electors": 160629,
+   "aliases": [
+    "Aswaraopet"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Telangana",
+   "ac_no": 119,
+   "name": "Bhadrachalam",
+   "reserved": "ST",
+   "districts": [
+    "Bhadradri Kothagudem",
+    "Jayashankar Bhupalpally"
+   ],
+   "lok_sabha": "Mahabubabad",
+   "electors": 154134,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 1,
+   "name": "Ichchapuram",
+   "reserved": null,
+   "districts": [
+    "Srikakulam"
+   ],
+   "lok_sabha": "Srikakulam",
+   "electors": 270180,
+   "aliases": [
+    "Ichapuram"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 2,
+   "name": "Palasa",
+   "reserved": null,
+   "districts": [
+    "Srikakulam"
+   ],
+   "lok_sabha": "Srikakulam",
+   "electors": 222378,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 3,
+   "name": "Tekkali",
+   "reserved": null,
+   "districts": [
+    "Srikakulam"
+   ],
+   "lok_sabha": "Srikakulam",
+   "electors": 239246,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 4,
+   "name": "Pathapatnam",
+   "reserved": null,
+   "districts": [
+    "Srikakulam"
+   ],
+   "lok_sabha": "Srikakulam",
+   "electors": 227167,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 5,
+   "name": "Srikakulam",
+   "reserved": null,
+   "districts": [
+    "Srikakulam"
+   ],
+   "lok_sabha": "Srikakulam",
+   "electors": 274523,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 6,
+   "name": "Amadalavalasa",
+   "reserved": null,
+   "districts": [
+    "Srikakulam"
+   ],
+   "lok_sabha": "Srikakulam",
+   "electors": 196098,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 7,
+   "name": "Etcherla",
+   "reserved": null,
+   "districts": [
+    "Srikakulam"
+   ],
+   "lok_sabha": "Vizianagaram",
+   "electors": 245696,
+   "aliases": [
+    "Echerla"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 8,
+   "name": "Narasannapeta",
+   "reserved": null,
+   "districts": [
+    "Srikakulam"
+   ],
+   "lok_sabha": "Srikakulam",
+   "electors": 217094,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 9,
+   "name": "Rajam",
+   "reserved": "SC",
+   "districts": [
+    "Vizianagaram"
+   ],
+   "lok_sabha": "Vizianagaram",
+   "electors": 228390,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 10,
+   "name": "Palakonda",
+   "reserved": "ST",
+   "districts": [
+    "Parvathipuram Manyam"
+   ],
+   "lok_sabha": "Araku",
+   "electors": 195673,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 11,
+   "name": "Kurupam",
+   "reserved": "ST",
+   "districts": [
+    "Parvathipuram Manyam"
+   ],
+   "lok_sabha": "Araku",
+   "electors": 194616,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 12,
+   "name": "Parvathipuram",
+   "reserved": "SC",
+   "districts": [
+    "Parvathipuram Manyam"
+   ],
+   "lok_sabha": "Araku",
+   "electors": 190512,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 13,
+   "name": "Salur",
+   "reserved": "ST",
+   "districts": [
+    "Parvathipuram Manyam"
+   ],
+   "lok_sabha": "Araku",
+   "electors": 204874,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 14,
+   "name": "Bobbili",
+   "reserved": null,
+   "districts": [
+    "Vizianagaram"
+   ],
+   "lok_sabha": "Vizianagaram",
+   "electors": 232170,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 15,
+   "name": "Cheepurupalli",
+   "reserved": null,
+   "districts": [
+    "Vizianagaram"
+   ],
+   "lok_sabha": "Vizianagaram",
+   "electors": 205918,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 16,
+   "name": "Gajapathinagaram",
+   "reserved": null,
+   "districts": [
+    "Vizianagaram"
+   ],
+   "lok_sabha": "Vizianagaram",
+   "electors": 206510,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 17,
+   "name": "Nellimarla",
+   "reserved": null,
+   "districts": [
+    "Vizianagaram"
+   ],
+   "lok_sabha": "Vizianagaram",
+   "electors": 214550,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 18,
+   "name": "Vizianagaram",
+   "reserved": null,
+   "districts": [
+    "Vizianagaram"
+   ],
+   "lok_sabha": "Vizianagaram",
+   "electors": 257760,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 19,
+   "name": "Srungavarapukota",
+   "reserved": null,
+   "districts": [
+    "Vizianagaram"
+   ],
+   "lok_sabha": "Visakhapatnam",
+   "electors": 223353,
+   "aliases": [
+    "S. Kota",
+    "Srungavarapu Kota"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 20,
+   "name": "Bhimili",
+   "reserved": null,
+   "districts": [
+    "Visakhapatnam"
+   ],
+   "lok_sabha": "Visakhapatnam",
+   "electors": 364304,
+   "aliases": [
+    "Bheemili",
+    "Bheemunipatnam"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 21,
+   "name": "Visakhapatnam East",
+   "reserved": null,
+   "districts": [
+    "Visakhapatnam"
+   ],
+   "lok_sabha": "Visakhapatnam",
+   "electors": 292444,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 22,
+   "name": "Visakhapatnam South",
+   "reserved": null,
+   "districts": [
+    "Visakhapatnam"
+   ],
+   "lok_sabha": "Visakhapatnam",
+   "electors": 216970,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 23,
+   "name": "Visakhapatnam North",
+   "reserved": null,
+   "districts": [
+    "Visakhapatnam"
+   ],
+   "lok_sabha": "Visakhapatnam",
+   "electors": 286016,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 24,
+   "name": "Visakhapatnam West",
+   "reserved": null,
+   "districts": [
+    "Visakhapatnam"
+   ],
+   "lok_sabha": "Visakhapatnam",
+   "electors": 213912,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 25,
+   "name": "Gajuwaka",
+   "reserved": null,
+   "districts": [
+    "Visakhapatnam"
+   ],
+   "lok_sabha": "Visakhapatnam",
+   "electors": 334399,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 26,
+   "name": "Chodavaram",
+   "reserved": null,
+   "districts": [
+    "Anakapalli"
+   ],
+   "lok_sabha": "Anakapalli",
+   "electors": 218095,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 27,
+   "name": "Madugula",
+   "reserved": null,
+   "districts": [
+    "Anakapalli"
+   ],
+   "lok_sabha": "Anakapalli",
+   "electors": 189560,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 28,
+   "name": "Araku Valley",
+   "reserved": "ST",
+   "districts": [
+    "Alluri Sitharama Raju"
+   ],
+   "lok_sabha": "Araku",
+   "electors": 245623,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 29,
+   "name": "Paderu",
+   "reserved": "ST",
+   "districts": [
+    "Alluri Sitharama Raju"
+   ],
+   "lok_sabha": "Araku",
+   "electors": 248473,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 30,
+   "name": "Anakapalle",
+   "reserved": null,
+   "districts": [
+    "Anakapalli"
+   ],
+   "lok_sabha": "Anakapalli",
+   "electors": 214759,
+   "aliases": [
+    "Anakapalli"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 31,
+   "name": "Pendurthi",
+   "reserved": null,
+   "districts": [
+    "Anakapalli"
+   ],
+   "lok_sabha": "Anakapalli",
+   "electors": 308024,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 32,
+   "name": "Elamanchili",
+   "reserved": null,
+   "districts": [
+    "Anakapalli"
+   ],
+   "lok_sabha": "Anakapalli",
+   "electors": 207380,
+   "aliases": [
+    "Yelamanchili",
+    "Yalamanchili"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 33,
+   "name": "Payakaraopet",
+   "reserved": "SC",
+   "districts": [
+    "Anakapalli"
+   ],
+   "lok_sabha": "Anakapalli",
+   "electors": 251185,
+   "aliases": [
+    "Payakaraopeta"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 34,
+   "name": "Narsipatnam",
+   "reserved": null,
+   "districts": [
+    "Anakapalli"
+   ],
+   "lok_sabha": "Anakapalli",
+   "electors": 212362,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 35,
+   "name": "Tuni",
+   "reserved": null,
+   "districts": [
+    "Kakinada"
+   ],
+   "lok_sabha": "Kakinada",
+   "electors": 224702,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 36,
+   "name": "Prathipadu",
+   "reserved": null,
+   "districts": [
+    "Kakinada"
+   ],
+   "lok_sabha": "Kakinada",
+   "electors": 217339,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 37,
+   "name": "Pithapuram",
+   "reserved": null,
+   "districts": [
+    "Kakinada"
+   ],
+   "lok_sabha": "Kakinada",
+   "electors": 236551,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 38,
+   "name": "Kakinada Rural",
+   "reserved": null,
+   "districts": [
+    "Kakinada"
+   ],
+   "lok_sabha": "Kakinada",
+   "electors": 269453,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 39,
+   "name": "Peddapuram",
+   "reserved": null,
+   "districts": [
+    "Kakinada"
+   ],
+   "lok_sabha": "Kakinada",
+   "electors": 215222,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 40,
+   "name": "Anaparthy",
+   "reserved": null,
+   "districts": [
+    "East Godavari"
+   ],
+   "lok_sabha": "Rajahmundry",
+   "electors": 226103,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 41,
+   "name": "Kakinada City",
+   "reserved": null,
+   "districts": [
+    "Kakinada"
+   ],
+   "lok_sabha": "Kakinada",
+   "electors": 241697,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 42,
+   "name": "Ramachandrapuram",
+   "reserved": null,
+   "districts": [
+    "Konaseema"
+   ],
+   "lok_sabha": "Amalapuram",
+   "electors": 203341,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 43,
+   "name": "Mummidivaram",
+   "reserved": null,
+   "districts": [
+    "Konaseema"
+   ],
+   "lok_sabha": "Amalapuram",
+   "electors": 245471,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 44,
+   "name": "Amalapuram",
+   "reserved": "SC",
+   "districts": [
+    "Konaseema"
+   ],
+   "lok_sabha": "Amalapuram",
+   "electors": 213630,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 45,
+   "name": "Razole",
+   "reserved": "SC",
+   "districts": [
+    "Konaseema"
+   ],
+   "lok_sabha": "Amalapuram",
+   "electors": 198010,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 46,
+   "name": "Gannavaram",
+   "reserved": "SC",
+   "districts": [
+    "Konaseema"
+   ],
+   "lok_sabha": "Amalapuram",
+   "electors": 198739,
+   "aliases": [
+    "P. Gannavaram",
+    "P Gannavaram"
+   ],
+   "match_name": false
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 47,
+   "name": "Kothapeta",
+   "reserved": null,
+   "districts": [
+    "Konaseema"
+   ],
+   "lok_sabha": "Amalapuram",
+   "electors": 252475,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 48,
+   "name": "Mandapeta",
+   "reserved": null,
+   "districts": [
+    "Konaseema"
+   ],
+   "lok_sabha": "Amalapuram",
+   "electors": 220563,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 49,
+   "name": "Rajanagaram",
+   "reserved": null,
+   "districts": [
+    "East Godavari"
+   ],
+   "lok_sabha": "Rajahmundry",
+   "electors": 216559,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 50,
+   "name": "Rajahmundry City",
+   "reserved": null,
+   "districts": [
+    "East Godavari"
+   ],
+   "lok_sabha": "Rajahmundry",
+   "electors": 267591,
+   "aliases": [
+    "Rajamahendravaram City"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 51,
+   "name": "Rajahmundry Rural",
+   "reserved": null,
+   "districts": [
+    "East Godavari"
+   ],
+   "lok_sabha": "Rajahmundry",
+   "electors": 272942,
+   "aliases": [
+    "Rajamahendravaram Rural"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 52,
+   "name": "Jaggampeta",
+   "reserved": null,
+   "districts": [
+    "Kakinada"
+   ],
+   "lok_sabha": "Kakinada",
+   "electors": 229957,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 53,
+   "name": "Rampachodavaram",
+   "reserved": "ST",
+   "districts": [
+    "Polavaram"
+   ],
+   "lok_sabha": "Araku",
+   "electors": 277382,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 54,
+   "name": "Kovvur",
+   "reserved": "SC",
+   "districts": [
+    "East Godavari"
+   ],
+   "lok_sabha": "Rajahmundry",
+   "electors": 184245,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 55,
+   "name": "Nidadavole",
+   "reserved": null,
+   "districts": [
+    "East Godavari"
+   ],
+   "lok_sabha": "Rajahmundry",
+   "electors": 213559,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 56,
+   "name": "Achanta",
+   "reserved": null,
+   "districts": [
+    "West Godavari"
+   ],
+   "lok_sabha": "Narasapuram",
+   "electors": 180110,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 57,
+   "name": "Palakollu",
+   "reserved": null,
+   "districts": [
+    "West Godavari"
+   ],
+   "lok_sabha": "Narasapuram",
+   "electors": 195146,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 58,
+   "name": "Narasapuram",
+   "reserved": null,
+   "districts": [
+    "West Godavari"
+   ],
+   "lok_sabha": "Narasapuram",
+   "electors": 170521,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 59,
+   "name": "Bhimavaram",
+   "reserved": null,
+   "districts": [
+    "West Godavari"
+   ],
+   "lok_sabha": "Narasapuram",
+   "electors": 253201,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 60,
+   "name": "Undi",
+   "reserved": null,
+   "districts": [
+    "West Godavari"
+   ],
+   "lok_sabha": "Narasapuram",
+   "electors": 224831,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 61,
+   "name": "Tanuku",
+   "reserved": null,
+   "districts": [
+    "West Godavari"
+   ],
+   "lok_sabha": "Narasapuram",
+   "electors": 234677,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 62,
+   "name": "Tadepalligudem",
+   "reserved": null,
+   "districts": [
+    "West Godavari"
+   ],
+   "lok_sabha": "Narasapuram",
+   "electors": 215325,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 63,
+   "name": "Unguturu",
+   "reserved": null,
+   "districts": [
+    "Eluru"
+   ],
+   "lok_sabha": "Eluru",
+   "electors": 206634,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 64,
+   "name": "Denduluru",
+   "reserved": null,
+   "districts": [
+    "Eluru"
+   ],
+   "lok_sabha": "Eluru",
+   "electors": 224114,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 65,
+   "name": "Eluru",
+   "reserved": null,
+   "districts": [
+    "Eluru"
+   ],
+   "lok_sabha": "Eluru",
+   "electors": 235464,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 66,
+   "name": "Gopalapuram",
+   "reserved": "SC",
+   "districts": [
+    "East Godavari"
+   ],
+   "lok_sabha": "Rajahmundry",
+   "electors": 242853,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 67,
+   "name": "Polavaram",
+   "reserved": "ST",
+   "districts": [
+    "Eluru"
+   ],
+   "lok_sabha": "Eluru",
+   "electors": 254047,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 68,
+   "name": "Chintalapudi",
+   "reserved": "SC",
+   "districts": [
+    "Eluru"
+   ],
+   "lok_sabha": "Eluru",
+   "electors": 273141,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 69,
+   "name": "Tiruvuru",
+   "reserved": "SC",
+   "districts": [
+    "NTR"
+   ],
+   "lok_sabha": "Vijayawada",
+   "electors": 207239,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 70,
+   "name": "Nuzvid",
+   "reserved": null,
+   "districts": [
+    "Eluru"
+   ],
+   "lok_sabha": "Eluru",
+   "electors": 239034,
+   "aliases": [
+    "Nuzvidu"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 71,
+   "name": "Gannavaram",
+   "reserved": null,
+   "districts": [
+    "Krishna"
+   ],
+   "lok_sabha": "Machilipatnam",
+   "electors": 279127,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 72,
+   "name": "Gudivada",
+   "reserved": null,
+   "districts": [
+    "Krishna"
+   ],
+   "lok_sabha": "Machilipatnam",
+   "electors": 204361,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 73,
+   "name": "Kaikalur",
+   "reserved": null,
+   "districts": [
+    "Eluru"
+   ],
+   "lok_sabha": "Eluru",
+   "electors": 205682,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 74,
+   "name": "Pedana",
+   "reserved": null,
+   "districts": [
+    "Krishna"
+   ],
+   "lok_sabha": "Machilipatnam",
+   "electors": 167622,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 75,
+   "name": "Machilipatnam",
+   "reserved": null,
+   "districts": [
+    "Krishna"
+   ],
+   "lok_sabha": "Machilipatnam",
+   "electors": 196765,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 76,
+   "name": "Avanigadda",
+   "reserved": null,
+   "districts": [
+    "Krishna"
+   ],
+   "lok_sabha": "Machilipatnam",
+   "electors": 212455,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 77,
+   "name": "Pamarru",
+   "reserved": "SC",
+   "districts": [
+    "Krishna"
+   ],
+   "lok_sabha": "Machilipatnam",
+   "electors": 184716,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 78,
+   "name": "Penamaluru",
+   "reserved": null,
+   "districts": [
+    "Krishna"
+   ],
+   "lok_sabha": "Machilipatnam",
+   "electors": 294999,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 79,
+   "name": "Vijayawada West",
+   "reserved": null,
+   "districts": [
+    "NTR"
+   ],
+   "lok_sabha": "Vijayawada",
+   "electors": 256021,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 80,
+   "name": "Vijayawada Central",
+   "reserved": null,
+   "districts": [
+    "NTR"
+   ],
+   "lok_sabha": "Vijayawada",
+   "electors": 277796,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 81,
+   "name": "Vijayawada East",
+   "reserved": null,
+   "districts": [
+    "NTR"
+   ],
+   "lok_sabha": "Vijayawada",
+   "electors": 270694,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 82,
+   "name": "Mylavaram",
+   "reserved": null,
+   "districts": [
+    "NTR"
+   ],
+   "lok_sabha": "Vijayawada",
+   "electors": 281783,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 83,
+   "name": "Nandigama",
+   "reserved": "SC",
+   "districts": [
+    "NTR"
+   ],
+   "lok_sabha": "Vijayawada",
+   "electors": 205521,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 84,
+   "name": "Jaggayyapeta",
+   "reserved": null,
+   "districts": [
+    "NTR"
+   ],
+   "lok_sabha": "Vijayawada",
+   "electors": 205415,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 85,
+   "name": "Pedakurapadu",
+   "reserved": null,
+   "districts": [
+    "Palnadu"
+   ],
+   "lok_sabha": "Narasaraopet",
+   "electors": 232604,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 86,
+   "name": "Tadikonda",
+   "reserved": "SC",
+   "districts": [
+    "Guntur"
+   ],
+   "lok_sabha": "Guntur",
+   "electors": 207832,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 87,
+   "name": "Mangalagiri",
+   "reserved": null,
+   "districts": [
+    "Guntur"
+   ],
+   "lok_sabha": "Guntur",
+   "electors": 292568,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 88,
+   "name": "Ponnuru",
+   "reserved": null,
+   "districts": [
+    "Guntur"
+   ],
+   "lok_sabha": "Guntur",
+   "electors": 227648,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 89,
+   "name": "Vemuru",
+   "reserved": "SC",
+   "districts": [
+    "Bapatla"
+   ],
+   "lok_sabha": "Bapatla",
+   "electors": 198038,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 90,
+   "name": "Repalle",
+   "reserved": null,
+   "districts": [
+    "Bapatla"
+   ],
+   "lok_sabha": "Bapatla",
+   "electors": 229005,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 91,
+   "name": "Tenali",
+   "reserved": null,
+   "districts": [
+    "Guntur"
+   ],
+   "lok_sabha": "Guntur",
+   "electors": 267914,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 92,
+   "name": "Bapatla",
+   "reserved": null,
+   "districts": [
+    "Bapatla"
+   ],
+   "lok_sabha": "Bapatla",
+   "electors": 192192,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 93,
+   "name": "Prathipadu",
+   "reserved": "SC",
+   "districts": [
+    "Guntur"
+   ],
+   "lok_sabha": "Guntur",
+   "electors": 268252,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 94,
+   "name": "Guntur West",
+   "reserved": null,
+   "districts": [
+    "Guntur"
+   ],
+   "lok_sabha": "Guntur",
+   "electors": 278320,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 95,
+   "name": "Guntur East",
+   "reserved": null,
+   "districts": [
+    "Guntur"
+   ],
+   "lok_sabha": "Guntur",
+   "electors": 250790,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 96,
+   "name": "Chilakaluripet",
+   "reserved": null,
+   "districts": [
+    "Palnadu"
+   ],
+   "lok_sabha": "Narasaraopet",
+   "electors": 226867,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 97,
+   "name": "Narasaraopet",
+   "reserved": null,
+   "districts": [
+    "Palnadu"
+   ],
+   "lok_sabha": "Narasaraopet",
+   "electors": 232951,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 98,
+   "name": "Sattenapalle",
+   "reserved": null,
+   "districts": [
+    "Palnadu"
+   ],
+   "lok_sabha": "Narasaraopet",
+   "electors": 242328,
+   "aliases": [
+    "Sattenapalli"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 99,
+   "name": "Vinukonda",
+   "reserved": null,
+   "districts": [
+    "Palnadu"
+   ],
+   "lok_sabha": "Narasaraopet",
+   "electors": 264770,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 100,
+   "name": "Gurajala",
+   "reserved": null,
+   "districts": [
+    "Palnadu"
+   ],
+   "lok_sabha": "Narasaraopet",
+   "electors": 274124,
+   "aliases": [
+    "Gurazala"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 101,
+   "name": "Macherla",
+   "reserved": null,
+   "districts": [
+    "Palnadu"
+   ],
+   "lok_sabha": "Narasaraopet",
+   "electors": 262518,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 102,
+   "name": "Yerragondapalem",
+   "reserved": "SC",
+   "districts": [
+    "Markapuram"
+   ],
+   "lok_sabha": "Ongole",
+   "electors": 207435,
+   "aliases": [
+    "Y. Palem"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 103,
+   "name": "Darsi",
+   "reserved": null,
+   "districts": [
+    "Prakasam"
+   ],
+   "lok_sabha": "Ongole",
+   "electors": 226590,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 104,
+   "name": "Parchur",
+   "reserved": null,
+   "districts": [
+    "Bapatla"
+   ],
+   "lok_sabha": "Bapatla",
+   "electors": 229821,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 105,
+   "name": "Addanki",
+   "reserved": null,
+   "districts": [
+    "Prakasam"
+   ],
+   "lok_sabha": "Bapatla",
+   "electors": 244190,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 106,
+   "name": "Chirala",
+   "reserved": null,
+   "districts": [
+    "Bapatla"
+   ],
+   "lok_sabha": "Bapatla",
+   "electors": 203136,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 107,
+   "name": "Santhanuthalapadu",
+   "reserved": "SC",
+   "districts": [
+    "Prakasam"
+   ],
+   "lok_sabha": "Bapatla",
+   "electors": 214795,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 108,
+   "name": "Ongole",
+   "reserved": null,
+   "districts": [
+    "Prakasam"
+   ],
+   "lok_sabha": "Ongole",
+   "electors": 240385,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 109,
+   "name": "Kandukur",
+   "reserved": null,
+   "districts": [
+    "Prakasam"
+   ],
+   "lok_sabha": "Nellore",
+   "electors": 228979,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 110,
+   "name": "Kondapi",
+   "reserved": "SC",
+   "districts": [
+    "Prakasam"
+   ],
+   "lok_sabha": "Ongole",
+   "electors": 239702,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 111,
+   "name": "Markapuram",
+   "reserved": null,
+   "districts": [
+    "Markapuram"
+   ],
+   "lok_sabha": "Ongole",
+   "electors": 215024,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 112,
+   "name": "Giddalur",
+   "reserved": null,
+   "districts": [
+    "Markapuram"
+   ],
+   "lok_sabha": "Ongole",
+   "electors": 245114,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 113,
+   "name": "Kanigiri",
+   "reserved": null,
+   "districts": [
+    "Markapuram"
+   ],
+   "lok_sabha": "Ongole",
+   "electors": 240275,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 114,
+   "name": "Kavali",
+   "reserved": null,
+   "districts": [
+    "Nellore"
+   ],
+   "lok_sabha": "Nellore",
+   "electors": 238645,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 115,
+   "name": "Atmakur",
+   "reserved": null,
+   "districts": [
+    "Nellore"
+   ],
+   "lok_sabha": "Nellore",
+   "electors": 215460,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 116,
+   "name": "Kovur",
+   "reserved": null,
+   "districts": [
+    "Nellore"
+   ],
+   "lok_sabha": "Nellore",
+   "electors": 267403,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 117,
+   "name": "Nellore City",
+   "reserved": null,
+   "districts": [
+    "Nellore"
+   ],
+   "lok_sabha": "Nellore",
+   "electors": 239544,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 118,
+   "name": "Nellore Rural",
+   "reserved": null,
+   "districts": [
+    "Nellore"
+   ],
+   "lok_sabha": "Nellore",
+   "electors": 280948,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 119,
+   "name": "Sarvepalli",
+   "reserved": null,
+   "districts": [
+    "Nellore"
+   ],
+   "lok_sabha": "Tirupati",
+   "electors": 232034,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 120,
+   "name": "Gudur",
+   "reserved": "SC",
+   "districts": [
+    "Nellore"
+   ],
+   "lok_sabha": "Tirupati",
+   "electors": 245241,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 121,
+   "name": "Sullurpeta",
+   "reserved": "SC",
+   "districts": [
+    "Tirupati"
+   ],
+   "lok_sabha": "Tirupati",
+   "electors": 242704,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 122,
+   "name": "Venkatagiri",
+   "reserved": null,
+   "districts": [
+    "Tirupati"
+   ],
+   "lok_sabha": "Tirupati",
+   "electors": 243637,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 123,
+   "name": "Udayagiri",
+   "reserved": null,
+   "districts": [
+    "Nellore"
+   ],
+   "lok_sabha": "Nellore",
+   "electors": 241861,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 124,
+   "name": "Badvel",
+   "reserved": "SC",
+   "districts": [
+    "YSR Kadapa"
+   ],
+   "lok_sabha": "Kadapa",
+   "electors": 220220,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 125,
+   "name": "Rajampet",
+   "reserved": null,
+   "districts": [
+    "YSR Kadapa"
+   ],
+   "lok_sabha": "Rajampet",
+   "electors": 241363,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 126,
+   "name": "Kadapa",
+   "reserved": null,
+   "districts": [
+    "YSR Kadapa"
+   ],
+   "lok_sabha": "Kadapa",
+   "electors": 283618,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 127,
+   "name": "Kodur",
+   "reserved": "SC",
+   "districts": [
+    "Tirupati"
+   ],
+   "lok_sabha": "Rajampet",
+   "electors": 204582,
+   "aliases": [
+    "Railway Kodur"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 128,
+   "name": "Rayachoti",
+   "reserved": null,
+   "districts": [
+    "Annamayya"
+   ],
+   "lok_sabha": "Rajampet",
+   "electors": 255424,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 129,
+   "name": "Pulivendla",
+   "reserved": null,
+   "districts": [
+    "YSR Kadapa"
+   ],
+   "lok_sabha": "Kadapa",
+   "electors": 230061,
+   "aliases": [
+    "Pulivendula"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 130,
+   "name": "Kamalapuram",
+   "reserved": null,
+   "districts": [
+    "YSR Kadapa"
+   ],
+   "lok_sabha": "Kadapa",
+   "electors": 204387,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 131,
+   "name": "Jammalamadugu",
+   "reserved": null,
+   "districts": [
+    "YSR Kadapa"
+   ],
+   "lok_sabha": "Kadapa",
+   "electors": 242826,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 132,
+   "name": "Proddatur",
+   "reserved": null,
+   "districts": [
+    "YSR Kadapa"
+   ],
+   "lok_sabha": "Kadapa",
+   "electors": 248103,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 133,
+   "name": "Mydukur",
+   "reserved": null,
+   "districts": [
+    "YSR Kadapa"
+   ],
+   "lok_sabha": "Kadapa",
+   "electors": 212134,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 134,
+   "name": "Allagadda",
+   "reserved": null,
+   "districts": [
+    "Nandyal"
+   ],
+   "lok_sabha": "Nandyal",
+   "electors": 233237,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 135,
+   "name": "Srisailam",
+   "reserved": null,
+   "districts": [
+    "Nandyal"
+   ],
+   "lok_sabha": "Nandyal",
+   "electors": 196596,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 136,
+   "name": "Nandikotkur",
+   "reserved": "SC",
+   "districts": [
+    "Nandyal"
+   ],
+   "lok_sabha": "Nandyal",
+   "electors": 218370,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 137,
+   "name": "Kurnool",
+   "reserved": null,
+   "districts": [
+    "Kurnool"
+   ],
+   "lok_sabha": "Kurnool",
+   "electors": 274557,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 138,
+   "name": "Panyam",
+   "reserved": null,
+   "districts": [
+    "Nandyal"
+   ],
+   "lok_sabha": "Nandyal",
+   "electors": 332012,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 139,
+   "name": "Nandyal",
+   "reserved": null,
+   "districts": [
+    "Nandyal"
+   ],
+   "lok_sabha": "Nandyal",
+   "electors": 274446,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 140,
+   "name": "Banaganapalle",
+   "reserved": null,
+   "districts": [
+    "Nandyal"
+   ],
+   "lok_sabha": "Nandyal",
+   "electors": 241695,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 141,
+   "name": "Dhone",
+   "reserved": null,
+   "districts": [
+    "Nandyal"
+   ],
+   "lok_sabha": "Nandyal",
+   "electors": 227835,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 142,
+   "name": "Pattikonda",
+   "reserved": null,
+   "districts": [
+    "Kurnool"
+   ],
+   "lok_sabha": "Kurnool",
+   "electors": 224049,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 143,
+   "name": "Kodumur",
+   "reserved": "SC",
+   "districts": [
+    "Kurnool"
+   ],
+   "lok_sabha": "Kurnool",
+   "electors": 246800,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 144,
+   "name": "Yemmiganur",
+   "reserved": null,
+   "districts": [
+    "Kurnool"
+   ],
+   "lok_sabha": "Kurnool",
+   "electors": 247940,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 145,
+   "name": "Mantralayam",
+   "reserved": null,
+   "districts": [
+    "Kurnool"
+   ],
+   "lok_sabha": "Kurnool",
+   "electors": 208407,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 146,
+   "name": "Adoni",
+   "reserved": null,
+   "districts": [
+    "Kurnool"
+   ],
+   "lok_sabha": "Kurnool",
+   "electors": 263169,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 147,
+   "name": "Alur",
+   "reserved": null,
+   "districts": [
+    "Kurnool"
+   ],
+   "lok_sabha": "Kurnool",
+   "electors": 259269,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 148,
+   "name": "Rayadurg",
+   "reserved": null,
+   "districts": [
+    "Ananthapuramu"
+   ],
+   "lok_sabha": "Anantapur",
+   "electors": 264418,
+   "aliases": [
+    "Rayadurgam"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 149,
+   "name": "Uravakonda",
+   "reserved": null,
+   "districts": [
+    "Ananthapuramu"
+   ],
+   "lok_sabha": "Anantapur",
+   "electors": 224574,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 150,
+   "name": "Guntakal",
+   "reserved": null,
+   "districts": [
+    "Ananthapuramu"
+   ],
+   "lok_sabha": "Anantapur",
+   "electors": 271057,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 151,
+   "name": "Tadipatri",
+   "reserved": null,
+   "districts": [
+    "Ananthapuramu"
+   ],
+   "lok_sabha": "Anantapur",
+   "electors": 249103,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 152,
+   "name": "Singanamala",
+   "reserved": "SC",
+   "districts": [
+    "Ananthapuramu"
+   ],
+   "lok_sabha": "Anantapur",
+   "electors": 247803,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 153,
+   "name": "Anantapur Urban",
+   "reserved": null,
+   "districts": [
+    "Ananthapuramu"
+   ],
+   "lok_sabha": "Anantapur",
+   "electors": 281403,
+   "aliases": [
+    "Ananthapur Urban"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 154,
+   "name": "Kalyandurg",
+   "reserved": null,
+   "districts": [
+    "Ananthapuramu"
+   ],
+   "lok_sabha": "Anantapur",
+   "electors": 230906,
+   "aliases": [
+    "Kalyandurgam"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 155,
+   "name": "Raptadu",
+   "reserved": null,
+   "districts": [
+    "Ananthapuramu"
+   ],
+   "lok_sabha": "Hindupur",
+   "electors": 250979,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 156,
+   "name": "Madakasira",
+   "reserved": "SC",
+   "districts": [
+    "Sri Sathya Sai"
+   ],
+   "lok_sabha": "Hindupur",
+   "electors": 210883,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 157,
+   "name": "Hindupur",
+   "reserved": null,
+   "districts": [
+    "Sri Sathya Sai"
+   ],
+   "lok_sabha": "Hindupur",
+   "electors": 249261,
+   "aliases": [
+    "Hindupuram"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 158,
+   "name": "Penukonda",
+   "reserved": null,
+   "districts": [
+    "Sri Sathya Sai"
+   ],
+   "lok_sabha": "Hindupur",
+   "electors": 236189,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 159,
+   "name": "Puttaparthi",
+   "reserved": null,
+   "districts": [
+    "Sri Sathya Sai"
+   ],
+   "lok_sabha": "Hindupur",
+   "electors": 211519,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 160,
+   "name": "Dharmavaram",
+   "reserved": null,
+   "districts": [
+    "Sri Sathya Sai"
+   ],
+   "lok_sabha": "Hindupur",
+   "electors": 246016,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 161,
+   "name": "Kadiri",
+   "reserved": null,
+   "districts": [
+    "Sri Sathya Sai"
+   ],
+   "lok_sabha": "Hindupur",
+   "electors": 253682,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 162,
+   "name": "Thamballapalle",
+   "reserved": null,
+   "districts": [
+    "Annamayya"
+   ],
+   "lok_sabha": "Rajampet",
+   "electors": 224978,
+   "aliases": [
+    "Thamballapalli"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 163,
+   "name": "Pileru",
+   "reserved": null,
+   "districts": [
+    "Annamayya"
+   ],
+   "lok_sabha": "Rajampet",
+   "electors": 235014,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 164,
+   "name": "Madanapalle",
+   "reserved": null,
+   "districts": [
+    "Annamayya"
+   ],
+   "lok_sabha": "Rajampet",
+   "electors": 266768,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 165,
+   "name": "Punganur",
+   "reserved": null,
+   "districts": [
+    "Annamayya"
+   ],
+   "lok_sabha": "Rajampet",
+   "electors": 239256,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 166,
+   "name": "Chandragiri",
+   "reserved": null,
+   "districts": [
+    "Tirupati"
+   ],
+   "lok_sabha": "Chittoor",
+   "electors": 315558,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 167,
+   "name": "Tirupati",
+   "reserved": null,
+   "districts": [
+    "Tirupati"
+   ],
+   "lok_sabha": "Tirupati",
+   "electors": 302596,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 168,
+   "name": "Srikalahasti",
+   "reserved": null,
+   "districts": [
+    "Tirupati"
+   ],
+   "lok_sabha": "Tirupati",
+   "electors": 248633,
+   "aliases": [
+    "Sri Kalahasti"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 169,
+   "name": "Sathyavedu",
+   "reserved": "SC",
+   "districts": [
+    "Tirupati"
+   ],
+   "lok_sabha": "Tirupati",
+   "electors": 215473,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 170,
+   "name": "Nagari",
+   "reserved": null,
+   "districts": [
+    "Chittoor"
+   ],
+   "lok_sabha": "Chittoor",
+   "electors": 202713,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 171,
+   "name": "Gangadhara Nellore",
+   "reserved": "SC",
+   "districts": [
+    "Chittoor"
+   ],
+   "lok_sabha": "Chittoor",
+   "electors": 205424,
+   "aliases": [
+    "G.D. Nellore",
+    "GD Nellore"
+   ],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 172,
+   "name": "Chittoor",
+   "reserved": null,
+   "districts": [
+    "Chittoor"
+   ],
+   "lok_sabha": "Chittoor",
+   "electors": 203712,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 173,
+   "name": "Puthalapattu",
+   "reserved": "SC",
+   "districts": [
+    "Chittoor"
+   ],
+   "lok_sabha": "Chittoor",
+   "electors": 222074,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 174,
+   "name": "Palamaner",
+   "reserved": null,
+   "districts": [
+    "Chittoor"
+   ],
+   "lok_sabha": "Chittoor",
+   "electors": 268135,
+   "aliases": [],
+   "match_name": true
+  },
+  {
+   "state": "Andhra Pradesh",
+   "ac_no": 175,
+   "name": "Kuppam",
+   "reserved": null,
+   "districts": [
+    "Chittoor"
+   ],
+   "lok_sabha": "Chittoor",
+   "electors": 225977,
+   "aliases": [],
+   "match_name": true
+  }
+ ],
+ "lok_sabha": [
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 1,
+   "name": "Araku",
+   "reserved": "ST"
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 2,
+   "name": "Srikakulam",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 3,
+   "name": "Vizianagaram",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 4,
+   "name": "Visakhapatnam",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 5,
+   "name": "Anakapalli",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 6,
+   "name": "Kakinada",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 7,
+   "name": "Amalapuram",
+   "reserved": "SC"
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 8,
+   "name": "Rajahmundry",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 9,
+   "name": "Narasapuram",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 10,
+   "name": "Eluru",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 11,
+   "name": "Machilipatnam",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 12,
+   "name": "Vijayawada",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 13,
+   "name": "Guntur",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 14,
+   "name": "Narasaraopet",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 15,
+   "name": "Bapatla",
+   "reserved": "SC"
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 16,
+   "name": "Ongole",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 17,
+   "name": "Nandyal",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 18,
+   "name": "Kurnool",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 19,
+   "name": "Anantapur",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 20,
+   "name": "Hindupur",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 21,
+   "name": "Kadapa",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 22,
+   "name": "Nellore",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 23,
+   "name": "Tirupati",
+   "reserved": "SC"
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 24,
+   "name": "Rajampet",
+   "reserved": null
+  },
+  {
+   "state": "Andhra Pradesh",
+   "pc_no": 25,
+   "name": "Chittoor",
+   "reserved": "SC"
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 1,
+   "name": "Adilabad",
+   "reserved": "ST"
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 2,
+   "name": "Peddapalli",
+   "reserved": "SC"
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 3,
+   "name": "Karimnagar",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 4,
+   "name": "Nizamabad",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 5,
+   "name": "Zahirabad",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 6,
+   "name": "Medak",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 7,
+   "name": "Malkajgiri",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 8,
+   "name": "Secunderabad",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 9,
+   "name": "Hyderabad",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 10,
+   "name": "Chevella",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 11,
+   "name": "Mahabubnagar",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 12,
+   "name": "Nagarkurnool",
+   "reserved": "SC"
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 13,
+   "name": "Nalgonda",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 14,
+   "name": "Bhongir",
+   "reserved": null
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 15,
+   "name": "Warangal",
+   "reserved": "SC"
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 16,
+   "name": "Mahabubabad",
+   "reserved": "ST"
+  },
+  {
+   "state": "Telangana",
+   "pc_no": 17,
+   "name": "Khammam",
+   "reserved": null
+  }
+ ],
+ "districts": [
+  {
+   "state": "Telangana",
+   "name": "Adilabad",
+   "hq": "Adilabad",
+   "lat": 19.664,
+   "lon": 78.532,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Bhadradri Kothagudem",
+   "hq": "Kothagudem",
+   "lat": 17.55,
+   "lon": 80.619,
+   "aliases": [
+    "Kothagudem",
+    "Bhadradri"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Hanumakonda",
+   "hq": "Hanumakonda",
+   "lat": 18.007,
+   "lon": 79.558,
+   "aliases": [
+    "Hanamkonda"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Hyderabad",
+   "hq": "Hyderabad",
+   "lat": 17.385,
+   "lon": 78.487,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Jagtial",
+   "hq": "Jagtial",
+   "lat": 18.79,
+   "lon": 78.912,
+   "aliases": [
+    "Jagityal"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Jangaon",
+   "hq": "Jangaon",
+   "lat": 17.723,
+   "lon": 79.152,
+   "aliases": [
+    "Jangaon"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Jayashankar Bhupalpally",
+   "hq": "Bhupalpally",
+   "lat": 18.43,
+   "lon": 79.86,
+   "aliases": [
+    "Bhupalpally",
+    "Bhupalpalli"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Jogulamba Gadwal",
+   "hq": "Gadwal",
+   "lat": 16.235,
+   "lon": 77.796,
+   "aliases": [
+    "Gadwal"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Kamareddy",
+   "hq": "Kamareddy",
+   "lat": 18.322,
+   "lon": 78.342,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Karimnagar",
+   "hq": "Karimnagar",
+   "lat": 18.439,
+   "lon": 79.129,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Khammam",
+   "hq": "Khammam",
+   "lat": 17.247,
+   "lon": 80.151,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Komaram Bheem Asifabad",
+   "hq": "Asifabad",
+   "lat": 19.364,
+   "lon": 79.284,
+   "aliases": [
+    "Kumuram Bheem",
+    "Komaram Bheem",
+    "Asifabad"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Mahabubabad",
+   "hq": "Mahabubabad",
+   "lat": 17.598,
+   "lon": 80.012,
+   "aliases": [
+    "Mahbubabad"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Mahabubnagar",
+   "hq": "Mahabubnagar",
+   "lat": 16.738,
+   "lon": 78.008,
+   "aliases": [
+    "Mahbubnagar",
+    "Palamuru"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Mancherial",
+   "hq": "Mancherial",
+   "lat": 18.871,
+   "lon": 79.444,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Medak",
+   "hq": "Medak",
+   "lat": 18.045,
+   "lon": 78.26,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Medchal-Malkajgiri",
+   "hq": "Medchal",
+   "lat": 17.56,
+   "lon": 78.52,
+   "aliases": [
+    "Medchal-Malkajgiri",
+    "Medchal Malkajgiri"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Mulugu",
+   "hq": "Mulugu",
+   "lat": 18.191,
+   "lon": 79.942,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Nagarkurnool",
+   "hq": "Nagarkurnool",
+   "lat": 16.482,
+   "lon": 78.325,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Nalgonda",
+   "hq": "Nalgonda",
+   "lat": 17.058,
+   "lon": 79.268,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Narayanpet",
+   "hq": "Narayanpet",
+   "lat": 16.745,
+   "lon": 77.496,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Nirmal",
+   "hq": "Nirmal",
+   "lat": 19.096,
+   "lon": 78.344,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Nizamabad",
+   "hq": "Nizamabad",
+   "lat": 18.673,
+   "lon": 78.094,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Peddapalli",
+   "hq": "Peddapalli",
+   "lat": 18.614,
+   "lon": 79.374,
+   "aliases": [
+    "Peddapalle"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Rajanna Sircilla",
+   "hq": "Sircilla",
+   "lat": 18.388,
+   "lon": 78.81,
+   "aliases": [
+    "Rajanna Sircilla"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Ranga Reddy",
+   "hq": "Shamshabad",
+   "lat": 17.25,
+   "lon": 78.43,
+   "aliases": [
+    "Rangareddy",
+    "Ranga Reddy"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Sangareddy",
+   "hq": "Sangareddy",
+   "lat": 17.619,
+   "lon": 78.082,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Siddipet",
+   "hq": "Siddipet",
+   "lat": 18.102,
+   "lon": 78.852,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Suryapet",
+   "hq": "Suryapet",
+   "lat": 17.141,
+   "lon": 79.624,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Vikarabad",
+   "hq": "Vikarabad",
+   "lat": 17.338,
+   "lon": 77.904,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Wanaparthy",
+   "hq": "Wanaparthy",
+   "lat": 16.362,
+   "lon": 78.062,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Warangal",
+   "hq": "Warangal",
+   "lat": 17.968,
+   "lon": 79.594,
+   "aliases": []
+  },
+  {
+   "state": "Telangana",
+   "name": "Yadadri Bhuvanagiri",
+   "hq": "Bhongir",
+   "lat": 17.511,
+   "lon": 78.889,
+   "aliases": [
+    "Yadadri",
+    "Bhuvanagiri",
+    "Bhongir"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Srikakulam",
+   "hq": "Srikakulam",
+   "lat": 18.295,
+   "lon": 83.894,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Vizianagaram",
+   "hq": "Vizianagaram",
+   "lat": 18.107,
+   "lon": 83.396,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Parvathipuram Manyam",
+   "hq": "Parvathipuram",
+   "lat": 18.783,
+   "lon": 83.425,
+   "aliases": [
+    "Manyam"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Alluri Sitharama Raju",
+   "hq": "Paderu",
+   "lat": 18.083,
+   "lon": 82.667,
+   "aliases": [
+    "ASR district"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Visakhapatnam",
+   "hq": "Visakhapatnam",
+   "lat": 17.687,
+   "lon": 83.219,
+   "aliases": [
+    "Vizag",
+    "Visakha"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Anakapalli",
+   "hq": "Anakapalli",
+   "lat": 17.691,
+   "lon": 83.004,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Kakinada",
+   "hq": "Kakinada",
+   "lat": 16.989,
+   "lon": 82.248,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Konaseema",
+   "hq": "Amalapuram",
+   "lat": 16.579,
+   "lon": 82.006,
+   "aliases": [
+    "Konaseema"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "East Godavari",
+   "hq": "Rajamahendravaram",
+   "lat": 17.001,
+   "lon": 81.804,
+   "aliases": [
+    "Rajahmundry",
+    "Rajamahendravaram"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "West Godavari",
+   "hq": "Bhimavaram",
+   "lat": 16.545,
+   "lon": 81.521,
+   "aliases": [
+    "Bhimavaram"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Eluru",
+   "hq": "Eluru",
+   "lat": 16.711,
+   "lon": 81.095,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Polavaram",
+   "hq": "Rampachodavaram",
+   "lat": 17.44,
+   "lon": 81.78,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "NTR",
+   "hq": "Vijayawada",
+   "lat": 16.506,
+   "lon": 80.648,
+   "aliases": [
+    "Vijayawada",
+    "Bezawada"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Krishna",
+   "hq": "Machilipatnam",
+   "lat": 16.188,
+   "lon": 81.139,
+   "aliases": [
+    "Krishna district"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Palnadu",
+   "hq": "Narasaraopet",
+   "lat": 16.234,
+   "lon": 80.049,
+   "aliases": [
+    "Palnadu",
+    "Palnad"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Guntur",
+   "hq": "Guntur",
+   "lat": 16.307,
+   "lon": 80.437,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Bapatla",
+   "hq": "Bapatla",
+   "lat": 15.904,
+   "lon": 80.468,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Prakasam",
+   "hq": "Ongole",
+   "lat": 15.506,
+   "lon": 80.05,
+   "aliases": [
+    "Prakasam",
+    "Ongole"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Markapuram",
+   "hq": "Markapuram",
+   "lat": 15.735,
+   "lon": 79.27,
+   "aliases": [
+    "Markapur"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Nellore",
+   "hq": "Nellore",
+   "lat": 14.443,
+   "lon": 79.987,
+   "aliases": [
+    "SPSR Nellore"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Kurnool",
+   "hq": "Kurnool",
+   "lat": 15.828,
+   "lon": 78.037,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Nandyal",
+   "hq": "Nandyal",
+   "lat": 15.478,
+   "lon": 78.484,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Ananthapuramu",
+   "hq": "Anantapur",
+   "lat": 14.682,
+   "lon": 77.601,
+   "aliases": [
+    "Anantapur",
+    "Anantapuram",
+    "Ananthapur"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Sri Sathya Sai",
+   "hq": "Puttaparthi",
+   "lat": 14.165,
+   "lon": 77.812,
+   "aliases": [
+    "Sri Sathya Sai district"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "YSR Kadapa",
+   "hq": "Kadapa",
+   "lat": 14.467,
+   "lon": 78.824,
+   "aliases": [
+    "Kadapa",
+    "Cuddapah"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Annamayya",
+   "hq": "Rayachoti",
+   "lat": 14.058,
+   "lon": 78.752,
+   "aliases": [
+    "Annamayya district"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Tirupati",
+   "hq": "Tirupati",
+   "lat": 13.629,
+   "lon": 79.419,
+   "aliases": []
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Chittoor",
+   "hq": "Chittoor",
+   "lat": 13.217,
+   "lon": 79.1,
+   "aliases": []
+  }
+ ],
+ "regions": [
+  {
+   "state": "Andhra Pradesh",
+   "name": "Uttarandhra (North Andhra)",
+   "aliases": [
+    "Uttarandhra",
+    "North Andhra"
+   ],
+   "districts": [
+    "Srikakulam",
+    "Vizianagaram",
+    "Parvathipuram Manyam",
+    "Alluri Sitharama Raju",
+    "Visakhapatnam",
+    "Anakapalli"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Godavari districts",
+   "aliases": [
+    "Godavari districts"
+   ],
+   "districts": [
+    "Kakinada",
+    "Konaseema",
+    "East Godavari",
+    "West Godavari",
+    "Eluru",
+    "Polavaram"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Krishna-Guntur",
+   "aliases": [
+    "Krishna-Guntur",
+    "Amaravati region"
+   ],
+   "districts": [
+    "NTR",
+    "Krishna",
+    "Guntur",
+    "Palnadu",
+    "Bapatla"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "South Coastal Andhra",
+   "aliases": [
+    "South Coastal Andhra"
+   ],
+   "districts": [
+    "Prakasam",
+    "Markapuram",
+    "Nellore"
+   ]
+  },
+  {
+   "state": "Andhra Pradesh",
+   "name": "Rayalaseema",
+   "aliases": [
+    "Rayalaseema"
+   ],
+   "districts": [
+    "Kurnool",
+    "Nandyal",
+    "Ananthapuramu",
+    "Sri Sathya Sai",
+    "YSR Kadapa",
+    "Annamayya",
+    "Tirupati",
+    "Chittoor"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Greater Hyderabad",
+   "aliases": [
+    "Greater Hyderabad",
+    "GHMC"
+   ],
+   "districts": [
+    "Hyderabad",
+    "Medchal-Malkajgiri",
+    "Ranga Reddy",
+    "Sangareddy"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Adilabad district",
+   "aliases": [
+    "erstwhile Adilabad",
+    "undivided Adilabad"
+   ],
+   "districts": [
+    "Adilabad",
+    "Komaram Bheem Asifabad",
+    "Mancherial",
+    "Nirmal"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Nizamabad district",
+   "aliases": [
+    "erstwhile Nizamabad",
+    "undivided Nizamabad"
+   ],
+   "districts": [
+    "Nizamabad",
+    "Kamareddy"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Karimnagar district",
+   "aliases": [
+    "erstwhile Karimnagar",
+    "undivided Karimnagar"
+   ],
+   "districts": [
+    "Karimnagar",
+    "Jagtial",
+    "Peddapalli",
+    "Rajanna Sircilla"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Medak district",
+   "aliases": [
+    "erstwhile Medak",
+    "undivided Medak"
+   ],
+   "districts": [
+    "Medak",
+    "Sangareddy",
+    "Siddipet"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Ranga Reddy district",
+   "aliases": [
+    "erstwhile Ranga Reddy",
+    "undivided Ranga Reddy"
+   ],
+   "districts": [
+    "Ranga Reddy",
+    "Medchal-Malkajgiri",
+    "Vikarabad"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Mahabubnagar district",
+   "aliases": [
+    "erstwhile Mahabubnagar",
+    "undivided Mahabubnagar",
+    "erstwhile Palamuru"
+   ],
+   "districts": [
+    "Mahabubnagar",
+    "Narayanpet",
+    "Wanaparthy",
+    "Jogulamba Gadwal",
+    "Nagarkurnool"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Nalgonda district",
+   "aliases": [
+    "erstwhile Nalgonda",
+    "undivided Nalgonda"
+   ],
+   "districts": [
+    "Nalgonda",
+    "Suryapet",
+    "Yadadri Bhuvanagiri"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Warangal district",
+   "aliases": [
+    "erstwhile Warangal",
+    "undivided Warangal"
+   ],
+   "districts": [
+    "Warangal",
+    "Hanumakonda",
+    "Jangaon",
+    "Jayashankar Bhupalpally",
+    "Mahabubabad",
+    "Mulugu"
+   ]
+  },
+  {
+   "state": "Telangana",
+   "name": "Erstwhile Khammam district",
+   "aliases": [
+    "erstwhile Khammam",
+    "undivided Khammam"
+   ],
+   "districts": [
+    "Khammam",
+    "Bhadradri Kothagudem"
+   ]
+  }
+ ]
+}
