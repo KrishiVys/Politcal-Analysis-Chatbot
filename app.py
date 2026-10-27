@@ -39,6 +39,11 @@ from datetime import datetime, timedelta
 import streamlit as st
 
 import updatedcode as uc
+import streamlit.components.v1 as components
+try:
+    import site_data as sd          # constituency & region news (needs site_data.py + ap_tg_data.json here)
+except Exception as _sd_error:      # the rest of the app still works without them
+    sd = None
 
 st.set_page_config(page_title="Campen Political Analysis Chatbot", page_icon="🏛️", layout="wide")
 
@@ -837,9 +842,120 @@ def render_empty_notice(result: dict) -> None:
             "use a more specific name, widen the time window, or enable more sources in the sidebar.")
 
 
+REG_PERIODS = ["Today", "Yesterday", "Last 7 days"]
+REG_CSS = """<style>
+.rp-card{background:#fff;border:1px solid #e5e9f0;border-radius:14px;padding:14px 18px;margin:0 0 12px;}
+.rp-card h3{font-size:16px;font-weight:700;margin:2px 0 8px;color:#0f172a}
+.rp-title{font-size:21px;font-weight:800;margin:0 0 8px;color:#0f172a}
+.rp-facts{display:flex;flex-wrap:wrap;gap:7px}.rp-fact{background:#f1f5f9;border-radius:9px;padding:5px 9px;font-size:13px;color:#0f172a}
+.rp-fact b{color:#475569;font-weight:600;margin-right:4px}
+.rp-item{padding:9px 0;border-top:1px solid #eef1f5}.rp-item:first-of-type{border-top:none}
+.rp-txt{font-size:15px;line-height:1.5;color:#0f172a}
+.rp-meta{margin-top:5px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px}
+.rp-badge{background:#eef2ff;color:#3730a3;border-radius:999px;padding:2px 9px;font-weight:600}
+.rp-badge.d{background:#ecfdf5;color:#065f46}.rp-badge.t{background:#fff7ed;color:#9a3412}
+.rp-src{color:#64748b}.rp-src a{color:#1d4ed8;text-decoration:none;font-weight:500}
+</style>"""
+
+
+def reg_period_dates(period: str):
+    today = uc.ist_today()
+    if period == "Yesterday":
+        return today - timedelta(days=1), today - timedelta(days=1)
+    if period == "Last 7 days":
+        return today - timedelta(days=6), today
+    return today, today
+
+
+def _rp_item(it: dict, show_places: bool = True) -> str:
+    e = html.escape
+    badges = []
+    if show_places:
+        for a in it["acs"][:4]:
+            badges.append(f'<span class="rp-badge">📍 {e(a["name"])} · AC {a["ac_no"]}</span>')
+        named = {d for a in it["acs"] for d in sd.AC_BY_KEY[(a["state"], a["ac_no"])]["districts"]}
+        for _s, dn in it["districts"]:
+            if dn not in named and len(badges) < 6:
+                badges.append(f'<span class="rp-badge d">{e(dn)} district</span>')
+    if it.get("tag"):
+        badges.append(f'<span class="rp-badge t">{e(it["tag"])}</span>')
+    if it.get("when"):
+        badges.append(f'<span class="rp-src">{e(it["when"])}</span>')
+    links = " · ".join(f'<a href="{e(l["url"])}" target="_blank" rel="noopener">{e(l["name"])}</a>' for l in it["links"][:5])
+    src = f'<span class="rp-src">Sources: {links}</span>' if links else ""
+    return f'<div class="rp-item"><div class="rp-txt">{e(it["text"])}</div><div class="rp-meta">{"".join(badges)}{src}</div></div>'
+
+
+def _reg_pick(key: str, period: str) -> None:
+    label = dict(sd.search_options()).get(key, key)
+    st.session_state.trigger_regional = (key, period)
+    st.session_state.trigger_prompt = f"Political news: {label.split(' ', 1)[-1]} ({period})"
+
+
+def render_regional(msg: dict, key_prefix: str) -> None:
+    """Political news for a constituency, Lok Sabha seat, district, region, party or leader -- with constituency
+    numbers, a by-topic / by-place view and the map."""
+    e = html.escape
+    st.markdown(REG_CSS, unsafe_allow_html=True)
+    r, result, period = sd.resolve(msg["key"]), msg["result"], msg["period"]
+    facts = "".join(f'<span class="rp-fact"><b>{e(k)}</b>{e(v)}</span>' for k, v in r["info"].items())
+    st.markdown(f'<div class="rp-card"><div class="rp-title">🗳️ {e(r["title"])}</div><div class="rp-facts">{facts}</div></div>',
+                unsafe_allow_html=True)
+    segs = ([x for x in sd.ACS if x["state"] == r["ac"]["state"] and x["lok_sabha"] == r["ac"]["lok_sabha"] and x is not r["ac"]]
+            if r["kind"] == "ac" else r.get("segments") or [])
+    if segs:
+        st.caption("Other Assembly segments of the same Lok Sabha seat:" if r["kind"] == "ac" else "Assembly constituencies:")
+        for i in range(0, len(segs), 6):
+            cols = st.columns(6)
+            for col, x in zip(cols, segs[i:i + 6]):
+                col.button(f"{x['name']} · {x['ac_no']}", key=f"{key_prefix}_seg_{x['state'][:2]}{x['ac_no']}",
+                           on_click=_reg_pick, args=(f"ac:{sd.STATE_SHORT[x['state']]}:{x['ac_no']}", period),
+                           use_container_width=True)
+    items = sd.items_of(result)
+    left, right = st.columns([1.5, 1])
+    with right:
+        components.html(sd.map_html(result, r["highlight"], height=400), height=410)
+    with left:
+        if not items:
+            st.info(f"No political news found for {r['title']} ({result['period']}). Try 'Last 7 days', or a nearby "
+                    "district or region.")
+            return
+        view = st.radio("View", ["By topic", "By place"], horizontal=True, key=f"{key_prefix}_rview",
+                        label_visibility="collapsed")
+        st.caption(f"{len(items)} points · {result['period']} · gathered {result['fetched']}"
+                   + ("" if result["used_ai"] else " · headlines shown (Sarvam summaries unavailable)"))
+        if view == "By topic":
+            for st_ in result["states"]:
+                for sec in st_["sections"]:
+                    st.markdown(f'<div class="rp-card"><h3>{sec["icon"]} {e(sec["label"])} <span class="rp-src">· '
+                                f'{len(sec["items"])}</span></h3>' + "".join(_rp_item(it) for it in sec["items"]) + "</div>",
+                                unsafe_allow_html=True)
+                if st_["watch"]:
+                    st.markdown('<div class="rp-card"><h3>👀 What to watch</h3>' + "".join(
+                        f'<div class="rp-item"><div class="rp-txt">{e(w)}</div></div>' for w in st_["watch"]) + "</div>",
+                        unsafe_allow_html=True)
+        else:
+            for (st_name, dn), its in sd.by_district(result):
+                if dn:
+                    seats = sorted({(a["ac_no"], a["name"]) for it in its for a in it["acs"]
+                                    if dn in sd.AC_BY_KEY[(a["state"], a["ac_no"])]["districts"]})
+                    sub = (" · " + ", ".join(f"{e(n)} (AC {no})" for no, n in seats)) if seats else ""
+                    title = f"📍 {e(dn)} district <span class='rp-src'>· {e(st_name)}{sub}</span>"
+                else:
+                    title = f"🏛️ State-wide · {e(st_name)}"
+                st.markdown(f'<div class="rp-card"><h3>{title}</h3>' + "".join(_rp_item(it, bool(dn)) for it in its)
+                            + "</div>", unsafe_allow_html=True)
+
+
 def render_assistant_message(msg: dict, key_prefix: str) -> None:
     """Shared by the live turn and history replay, so widget keys match on reruns
     (that is what makes buttons like "Run fresh" and the downloads work)."""
+    if msg.get("kind") == "regional":
+        if sd is None:
+            st.warning("Constituency & region news needs site_data.py and ap_tg_data.json next to app.py.")
+        else:
+            render_regional(msg, key_prefix)
+        return
     if msg.get("kind") == "carousel":
         c = msg["carousel"]
         if msg.get("from_cache"):
@@ -895,7 +1011,7 @@ st.markdown(
 
 for key, default in [("messages", []), ("trigger_prompt", None), ("result_cache", {}),
                      ("recent_queries", []), ("force_fresh", False), ("trigger_wrap_range", None),
-                     ("trigger_wrap_party", None), ("trigger_carousel", None)]:
+                     ("trigger_wrap_party", None), ("trigger_carousel", None), ("trigger_regional", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -948,6 +1064,25 @@ with st.sidebar:
         st.rerun()
     st.caption("Or type in the chat box: \"daily wrap\", \"daily wrap telangana\", \"yesterday's AP roundup\", "
                "\"weekly wrap\", \"wrap-up last 5 days\" -- or for a party: \"BRS wrap\", \"TDP weekly wrap-up\".")
+
+    st.divider()
+    st.subheader("🗳️ Constituency & region news")
+    if sd is None:
+        st.caption("Add site_data.py and ap_tg_data.json next to app.py to turn this on.")
+        reg_period = "Today"
+    else:
+        _reg_options = sd.search_options()
+        _reg_labels = dict(_reg_options)
+        reg_key = st.selectbox("Search", [k for k, _ in _reg_options], index=None, key="opt_reg_q",
+                               format_func=lambda k: _reg_labels.get(k, k),
+                               placeholder="Constituency (name or no.), district, region, party, leader…")
+        reg_period = st.radio("Period", REG_PERIODS, horizontal=True, key="opt_reg_period")
+        if st.button("🗳️ Show political news", use_container_width=True, key="regional_btn", disabled=not reg_key):
+            _reg_pick(reg_key, reg_period)
+            st.rerun()
+        st.caption("Political news only -- parties, leaders, elected representatives, elections -- tagged with "
+                   "constituency numbers and shown on a map. Or type e.g. \"Kuppam news\", \"AC 175 AP\", "
+                   "\"Rayalaseema this week\", \"Warangal district\".")
 
     st.divider()
     st.subheader("🎠 Daily news carousel (draft)")
@@ -1121,6 +1256,43 @@ def run_carousel_turn(query: str, day, states: str, key_prefix: str) -> None:
         st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
 
 
+def run_regional_turn(query: str, key: str, period: str, key_prefix: str) -> None:
+    """One chat turn: political news for a constituency / Lok Sabha seat / district / region / party / leader."""
+    start, end = reg_period_dates(period)
+    cache_key = ("regional", key, str(start), str(end))
+    force_fresh = st.session_state.force_fresh
+    st.session_state.force_fresh = False
+    cached = st.session_state.result_cache.get(cache_key)
+    cache_age = (time.time() - cached[0]) / 60 if cached else None
+    if use_cache and not force_fresh and cached and cache_age < CACHE_TTL_MINUTES:
+        msg = {"role": "assistant", "kind": "regional", "key": key, "period": period, "result": cached[1]}
+        render_assistant_message(msg, key_prefix)
+        st.session_state.messages.append(msg)
+        return
+    placeholder = st.empty()
+    log = ProgressLog(placeholder)
+    try:
+        r = sd.resolve(key)
+        with contextlib.redirect_stdout(log):
+            w = uc.gather_daily_wrap(r["states"], start, client, end_day=end, party=r["subject"], fresh=force_fresh)
+        placeholder.empty()
+        result = sd.simplify_wrap(w)
+        result["fetched"] = f"{uc.utc_now() + uc.IST_OFFSET:%d %b %Y, %I:%M %p} IST"
+        with st.expander("🛠️ Technical log"):
+            st.code(log.getvalue() or "(no output)")
+        msg = {"role": "assistant", "kind": "regional", "key": key, "period": period, "result": result}
+        render_assistant_message(msg, key_prefix)
+        st.session_state.result_cache[cache_key] = (time.time(), result, False)
+        st.session_state.messages.append(msg)
+    except Exception as e:
+        placeholder.empty()
+        text = f"Something went wrong gathering the political news: {e}"
+        with st.expander("🛠️ Technical log"):
+            st.code(log.getvalue() or "(no output)")
+        st.error(text)
+        st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
+
+
 def run_wrap_turn(query: str, choice: str, start_day, end_day, key_prefix: str, party: str = "") -> None:
     """One chat turn for the news wrap-up (one day or a date range): reuse a
     recent identical one if allowed, otherwise gather it, show it, and add it
@@ -1190,6 +1362,8 @@ for i, msg in enumerate(st.session_state.messages):
             st.markdown(msg["content"])
         elif msg.get("error"):
             st.error(msg["content"])
+        elif msg.get("note"):
+            st.info(msg["content"])
         else:
             render_assistant_message(msg, key_prefix=f"msg{i}")
 
@@ -1209,7 +1383,23 @@ if prompt:
     key_prefix = f"msg{len(st.session_state.messages)}"  # index this reply will have in history
     wrap_choice = uc.detect_wrap_request(prompt, default=WRAP_CHOICES[wrap_label])
     with st.chat_message("assistant", avatar="🏛️"):
-        if st.session_state.trigger_carousel or uc.detect_carousel_request(prompt):
+        reg = st.session_state.trigger_regional
+        st.session_state.trigger_regional = None
+        if reg is None and sd is not None and not st.session_state.trigger_carousel \
+                and not st.session_state.trigger_wrap_range and not uc.detect_carousel_request(prompt):
+            found = sd.detect_regional(prompt)       # a constituency, Lok Sabha seat, district or region named
+            if isinstance(found, tuple):
+                reg = found
+            elif found:
+                reg = (found, sd.detect_period(prompt) or reg_period)
+        if reg and reg[0] == "ask-state":
+            text = (f"Constituency number {reg[1]} exists in both Andhra Pradesh and Telangana -- which one? "
+                    f"Try \"AC {reg[1]} AP\" or \"AC {reg[1]} Telangana\".")
+            st.info(text)
+            st.session_state.messages.append({"role": "assistant", "content": text, "note": True})
+        elif reg:
+            run_regional_turn(prompt, reg[0], reg[1], key_prefix)
+        elif st.session_state.trigger_carousel or uc.detect_carousel_request(prompt):
             car = st.session_state.trigger_carousel or (car_day, CAROUSEL_STATE_CHOICES[car_states_label])
             st.session_state.trigger_carousel = None
             run_carousel_turn(prompt, car[0], car[1], key_prefix)
