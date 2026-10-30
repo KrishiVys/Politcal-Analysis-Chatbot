@@ -645,19 +645,19 @@ def render_editorial_review(c: dict, kp: str) -> None:
                     if s["links"]:
                         st.caption("Sources: " + " · ".join(f"[{l['name']}]({l['url']})" for l in s["links"][:5]))
         if edit["briefs"]:
-            st.markdown(f"#### Slide 7 — In brief  ·  up to {uc.DECK_MAX_BRIEFS}")
+            st.markdown(f"#### Slide 8 — In brief  ·  up to {uc.DECK_MAX_BRIEFS}")
             for b in edit["briefs"]:
                 p = f"{kp}_rv_{b['id']}"
                 c1, c2 = st.columns([1, 9])
                 c1.checkbox("Use", b["include"], key=p + "_inc")
                 c2.text_input("Brief", b["text"], key=p + "_txt", label_visibility="collapsed")
-        st.markdown("#### Slide 8 — Today's takeaway")
+        st.markdown("#### Slide 9 — Today's takeaway")
         t = edit["takeaway"]
         st.text_input("Takeaway headline", t["headline"], key=f"{kp}_rv_tk_head")
         st.text_area("Takeaway detail (e.g. what led the news in the Telugu states)", t["detail"], key=f"{kp}_rv_tk_detail",
                      height=70)
         st.text_input("Follow line", t["follow"], key=f"{kp}_rv_tk_follow")
-        st.markdown("#### Slide 9 — Sources")
+        st.markdown("#### Slide 10 — Sources")
         st.text_input("Sources page link (becomes the QR code)", edit["sources_url"], key=f"{kp}_rv_url",
                       help="Download the sources page below, host it (e.g. on your website or Google Drive) and "
                            "paste its link here. Without a link, slide 9 lists the outlets instead.")
@@ -1095,7 +1095,7 @@ with st.sidebar:
         st.session_state.trigger_prompt = f"Daily news carousel, {car_day:%d %b %Y}"
         st.session_state.trigger_carousel = (car_day, CAROUSEL_STATE_CHOICES[car_states_label])
         st.rerun()
-    st.caption("A nine-slide DRAFT for editorial review, with separate National and AP/Telangana slides and the "
+    st.caption("A ten-slide DRAFT for editorial review, with separate National, AP/Telangana and Sports slides and the "
                "AP/Telangana angle in every section -- nothing is published or treated as verified. "
                "Or type \"carousel\" in the chat box.")
 
@@ -1210,7 +1210,7 @@ with st.expander("ℹ️ How this works"):
         "5. For a **news wrap-up of Andhra Pradesh and/or Telangana** -- one day or a date range of up to 31 days -- "
         "use the wrap-up section at the top of the sidebar, or type \"daily wrap\" / \"weekly wrap\" in the chat box. "
         "Set **Focus** to a party (or type e.g. \"BRS wrap\") for a wrap-up about that party in these states.\n"
-        "6. For a nine-slide **daily news carousel** (a DRAFT for editorial review, with sources, verification "
+        "6. For a ten-slide **daily news carousel** (a DRAFT for editorial review, with sources, verification "
         "statuses, caption, hashtags and alt text), use the carousel section in the sidebar or type \"carousel\".\n\n"
         "Paid sources (Sarvam, Brave, X) use real API quota on every new search. "
         "Use the **Free sources only** preset to avoid that, apart from the Sarvam summary."
