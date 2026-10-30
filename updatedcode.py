@@ -6258,23 +6258,36 @@ def build_carousel_pptx(final: dict, images=None, lang: str = "en") -> bytes:
     return buf.getvalue()
 
 
-def carousel_sources_html(final: dict) -> str:
-    """A simple web page listing every story's source links -- host it and use its address for the QR code."""
+def carousel_sources_html(final: dict, lang: str = "en") -> str:
+    """A simple web page listing every story's source links -- host it and use its address for the QR code.
+    lang="te": the Telugu page, using the reviewed Telugu headlines and briefs (links and outlet names unchanged)."""
     import html as _h
-    d = _deck_long_date(final, "en")
+    te = lang == "te"
+    d = _deck_long_date(final, lang)
+
+    def head(item, field):
+        return (item.get("te") or {}).get(field) or item.get(field, "") if te else item.get(field, "")
+
     rows = []
     for key, title, _mx in DECK_SECTIONS:
         for s in deck_section_stories(final, key):
             links = "".join(f'<li><a href="{_h.escape(l["url"])}">{_h.escape(l["name"])}</a></li>' for l in s["links"])
-            rows.append(f"<h3>{_h.escape(s['headline'])}</h3><ul>{links}</ul>")
+            rows.append(f"<h3>{_h.escape(head(s, 'headline'))}</h3><ul>{links}</ul>")
     for b in [b for b in final["briefs"] if b["include"]]:
         links = "".join(f'<li><a href="{_h.escape(l["url"])}">{_h.escape(l["name"])}</a></li>' for l in b["links"])
-        rows.append(f"<h3>{_h.escape(b['text'])}</h3><ul>{links}</ul>")
-    return ("<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-            f"<title>CamPen Media Daily Wrap -- sources -- {_h.escape(d)}</title>"
-            "<style>body{font-family:Arial,sans-serif;max-width:720px;margin:2em auto;padding:0 1em;color:#102848}"
+        rows.append(f"<h3>{_h.escape(head(b, 'text'))}</h3><ul>{links}</ul>")
+    heading = "CamPen Media \u00b7 Daily Wrap \u2014 " + ("\u0c2e\u0c42\u0c32\u0c3e\u0c32\u0c41" if te else "sources")
+    intro = ("\u0c28\u0c47\u0c1f\u0c3f \u0c15\u0c25\u0c28\u0c3e\u0c32 \u0c2e\u0c42\u0c32 \u0c32\u0c3f\u0c02\u0c15\u0c41\u0c32\u0c41"
+             if te else "Source links for today's stories")
+    font = ("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;700&display=swap'>"
+            if te else "")
+    family = "'Noto Sans Telugu','Nirmala UI','Gautami',Arial,sans-serif" if te else "Arial,sans-serif"
+    return (f"<!doctype html><html lang='{'te' if te else 'en'}'><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>{_h.escape(heading)} -- {_h.escape(d)}</title>{font}"
+            f"<style>body{{font-family:{family};max-width:720px;margin:2em auto;padding:0 1em;color:#102848;line-height:1.5}}"
             "h1{font-size:1.5em}h3{font-size:1.05em;margin:1.4em 0 .3em}a{color:#1058C0}</style>"
-            f"<h1>CamPen Media \u00b7 Daily Wrap \u2014 sources</h1><p>{_h.escape(d)}</p>" + "".join(rows))
+            f"<h1>{_h.escape(heading)}</h1><p>{_h.escape(d)} \u00b7 {_h.escape(intro)}</p>" + "".join(rows) + "</html>")
 
 
 # --------------------------------------------------------------------------
