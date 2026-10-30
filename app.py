@@ -699,6 +699,7 @@ def render_editorial_review(c: dict, kp: str) -> None:
     st.markdown("#### Telugu slides")
     if client is None:
         st.caption("Translating to Telugu needs a Sarvam API key.")
+    st.caption("Translate the review to get the Telugu slides and the Telugu sources page.")
     if st.button("🔤 Translate the review to Telugu (Sarvam)", key=f"{kp}_translate", disabled=client is None):
         with st.spinner("Translating..."):
             problems = uc.translate_carousel(edit, client)
@@ -734,6 +735,11 @@ def render_editorial_review(c: dict, kp: str) -> None:
         missing = uc.telugu_missing(edit)
         if missing:
             st.warning("Not translated yet:\n" + "\n".join(f"- {m}" for m in missing[:10]))
+        st.download_button("⬇️ Sources page in Telugu (HTML) to host for the QR code",
+                           uc.carousel_sources_html(edit, "te") if not missing else "",
+                           file_name=f"CamPen_DailyWrap_{edit['day']}_sources_TE.html", mime="text/html",
+                           key=f"{kp}_srcpage_te", disabled=bool(missing),
+                           help="Available once every headline and brief is translated.")
         if st.button("✅ Approve & build the final slides (Telugu)", key=f"{kp}_build_te",
                      disabled=bool(errors) or bool(missing) or uc.Presentation is None):
             try:
