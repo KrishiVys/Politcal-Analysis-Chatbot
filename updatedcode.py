@@ -99,7 +99,7 @@ USAGE
     python updatedcode.py --wrap ap --date 2026-10-09 --pdf
     python updatedcode.py --wrap --from-date 2026-10-01 --to-date 2026-10-07 --save   # a date range (max 31 days)
     python updatedcode.py --wrap telangana --wrap-party BRS               # one party's news in AP/Telangana
-    python updatedcode.py --carousel --save --pdf                         # DRAFT 9-slide daily news carousel
+    python updatedcode.py --carousel --save --pdf                         # DRAFT 10-slide daily news carousel
     (In interactive mode, typing "daily wrap", "today's news telangana",
      "AP roundup", "weekly wrap" or "telangana wrap last 5 days" does the same.)
 
@@ -3775,7 +3775,7 @@ def save_wrap_pdf(wrap: dict) -> str:
 # --------------------------------------------------------------------------
 # Daily news carousel (editorial DRAFT)
 # --------------------------------------------------------------------------
-# A nine-slide daily news carousel for a digital briefing, following the
+# A ten-slide daily news carousel for a digital briefing (sports has its own slide), following the
 # editorial instructions: national/state, world, business, tech/science/health/
 # environment/sports and public-interest news; prioritised by significance;
 # every story with source URLs and a verification status; no event repeated
@@ -3825,12 +3825,13 @@ CAROUSEL_SLIDES = [
     {"n": 4, "key": "state", "title": "State developments", "cats": ["state"], "max": 4},
     {"n": 5, "key": "world", "title": "World affairs", "cats": ["world"], "max": 3},
     {"n": 6, "key": "business", "title": "Business and economy", "cats": ["business"], "max": 3},
-    {"n": 7, "key": "more", "title": "Technology, science, health, environment and sports",
-     "cats": ["tech", "health_edu", "environment", "sports"], "max": 3},
-    {"n": 8, "key": "briefs", "title": "Additional headlines in brief", "max": 5},
-    {"n": 9, "key": "takeaway", "title": "Daily takeaway and follow prompt"},
+    {"n": 7, "key": "more", "title": "Technology, science, health and environment",
+     "cats": ["tech", "health_edu", "environment"], "max": 3},
+    {"n": 8, "key": "sports", "title": "Sports", "cats": ["sports"], "max": 3},
+    {"n": 9, "key": "briefs", "title": "Additional headlines in brief", "max": 5},
+    {"n": 10, "key": "takeaway", "title": "Daily takeaway and follow prompt"},
 ]
-CAROUSEL_STORY_SLIDES = ["national", "state", "world", "business", "more"]
+CAROUSEL_STORY_SLIDES = ["national", "state", "world", "business", "more", "sports"]
 
 # AP/Telangana-focused search for each topic: these keywords AND the chosen states' names.
 CAROUSEL_STATE_TOPIC_TERMS = {
@@ -4340,7 +4341,7 @@ def _first_published(s: dict) -> str:
 
 
 def _carousel_intro(day) -> str:
-    return ("You are the editorial assistant for a daily digital news briefing, preparing a DRAFT nine-slide carousel "
+    return (f"You are the editorial assistant for a daily digital news briefing, preparing a DRAFT {len(CAROUSEL_SLIDES)}-slide carousel "
             f"for {day:%A, %d %B %Y} (India) that a human editor will check and approve. Nothing you write is "
             "published, scheduled or treated as verified until the editor approves it.\n")
 
@@ -4355,10 +4356,11 @@ def _carousel_select_prompt(day) -> str:
         "- Prioritise by public significance, impact, novelty and relevance to Indian readers. Prefer stories carried "
         "by several outlets, including established ones.\n"
         "- top_story: the single most significant main candidate.\n"
-        "- slides: for each of national, state, world, business and more, choose main candidates FROM THAT SLIDE'S "
+        "- slides: for each of national, state, world, business, more and sports, choose main candidates FROM THAT SLIDE'S "
         "categories -- 0-3 each, up to 4 for state (national: National politics -- India-level news NOT specific to "
         "Andhra Pradesh or Telangana; state: State developments in Andhra Pradesh and Telangana; world: World affairs; "
-        "business: Business & economy; more: Technology/AI/science, Health & education, Environment & climate, Sports). "
+        "business: Business & economy; more: Technology/AI/science, Health & education, Environment & climate; "
+        "sports: Sports). "
         "Adapt to the day's news: choose fewer, or none, rather than include something trivial. NEVER manufacture a "
         "story to fill a slide.\n"
         "- ANDHRA PRADESH AND TELANGANA: candidates marked \"related to\" a state concern Andhra Pradesh or Telangana. "
@@ -4367,7 +4369,7 @@ def _carousel_select_prompt(day) -> str:
         "- briefs: 0-5 brief candidates worth a one-line mention.\n"
         "- NEVER use the same underlying event twice anywhere -- top story, slides or briefs.\n"
         "Respond with ONLY a JSON object, no markdown fences, in exactly this shape:\n"
-        '{"top_story": "C1", "slides": {"national": [], "state": [], "world": [], "business": [], "more": []}, '
+        '{"top_story": "C1", "slides": {"national": [], "state": [], "world": [], "business": [], "more": [], "sports": []}, '
         '"briefs": []}'
     )
 
@@ -5287,9 +5289,9 @@ def save_carousel_pdf(c: dict) -> str:
 # edits every story, adds licensed images with credits, completes the
 # checklist and approves. Only an approved review can be built into the final
 # PowerPoint, laid out exactly like the CamPen Media master template
-# (TNW_Mastertemplate.pdf): 3:4 portrait, 810 x 1080 pt, nine slides --
+# (TNW_Mastertemplate.pdf): 3:4 portrait, 810 x 1080 pt, the template's nine slides plus Sports --
 #   1 cover  2 top story  3 national  4 state (AP & Telangana)  5 world
-#   6 business & technology  7 in brief  8 today's takeaway  9 sources (QR)
+#   6 business & technology  7 sports  8 in brief  9 today's takeaway  10 sources (QR)
 # in English, and in Telugu from a reviewed Sarvam translation.
 #
 # The template's brand artwork (backgrounds, logos, globe, pillars, dividers,
@@ -5342,7 +5344,7 @@ DECK_CHIP_DEFAULTS = {"national": "INDIA", "world": "WORLD AFFAIRS", "business":
 DECK_SECTIONS = [  # key, review title, most stories on the slide
     ("top", "Slide 2 -- Top story", 1), ("national", "Slide 3 -- National developments", 3),
     ("state", "Slide 4 -- State developments: AP & Telangana", 4), ("world", "Slide 5 -- World affairs", 2),
-    ("biztech", "Slide 6 -- Business & technology", 3)]
+    ("biztech", "Slide 6 -- Business & technology", 3), ("sports", "Slide 7 -- Sports", 3)]
 DECK_MAX_BRIEFS = 5
 DECK_STATUS_LABELS = {"developing": "DEVELOPING", "allegation": "ALLEGATION", "disputed": "DISPUTED"}
 DECK_FOLLOW_DEFAULT = "Follow CamPen Media for tomorrow's wrap-up. Share this with someone who'd find it useful."
@@ -5390,7 +5392,7 @@ def _deck_status(verification: str) -> str:
 
 # ---------------------------------------------------------------- review state
 def carousel_edit_state(c: dict) -> dict:
-    """The draft carousel as an editable review, in the template's nine-slide structure."""
+    """The draft carousel as an editable review, in the template's slide structure (plus a Sports slide)."""
     slides = {sl["key"]: sl for sl in c["slides"]}
 
     def story(card, section, include=True):
@@ -5410,6 +5412,7 @@ def carousel_edit_state(c: dict) -> dict:
         stories += [story(card, key) for card in slides.get(src, {}).get("cards", [])]
     biz = slides.get("business", {}).get("cards", []) + slides.get("more", {}).get("cards", [])
     stories += [story(card, "biztech", include=i < 3) for i, card in enumerate(biz)]
+    stories += [story(card, "sports") for card in slides.get("sports", {}).get("cards", [])]
     briefs = []
     for b in slides.get("briefs", {}).get("briefs", []):
         names = ", ".join(r["name"] for r in b["sources"][:2])
@@ -5654,7 +5657,7 @@ def _deck_crops() -> dict:
     return _DECK_CROPS
 
 
-# ---------------------------------------------------------------- the nine slides
+# ---------------------------------------------------------------- the slides
 def _deck_text(edit_item: dict, field: str, lang: str) -> str:
     if lang == "te":
         return (edit_item.get("te") or {}).get(field, "")
@@ -5826,17 +5829,18 @@ def _slide_flow(cv, final, n, total, stories, kind):
     lang = cv.lang
     _deck_header_light(cv, final, n, total)
     y = 108
-    head_role = {"national": "sans", "world": "serif", "biztech": "serif_alt"}[kind]
-    body_role = {"national": "sans", "world": "body", "biztech": "body"}[kind]
+    head_role = {"national": "sans", "world": "serif", "biztech": "serif_alt", "sports": "serif_alt"}[kind]
+    body_role = {"national": "sans", "world": "body", "biztech": "body", "sports": "body"}[kind]
     head_color = "ink" if kind == "national" else "black"
     developing = False
     for i, s in enumerate(stories):
         if i:
             y += 6 * cv.k
-            cv.image("divider_light" if kind == "biztech" else "divider_row", 30.6, y, 748.5, 14.2)
+            cv.image("divider_light" if kind in ("biztech", "sports") else "divider_row", 30.6, y, 748.5, 14.2)
             y += 22 * cv.k
         chip_x, chip_h = 46, 0
-        if kind == "biztech" or i == 0:
+        own_chip = kind == "sports" and (s.get("chip") or "").strip().upper() not in ("", "SPORTS")
+        if kind == "biztech" or i == 0 or own_chip:   # sports: one SPORTS chip on top, unless a story has its own
             fill = "chip_teal" if (kind == "biztech" and s.get("chip", "").upper().startswith("BUSINESS")) else \
                 ("chip_world" if kind == "world" else "chip_blue")
             cw, chip_h = cv.chip(chip_x, y, _deck_story_label(s, lang), fill)
@@ -5850,10 +5854,10 @@ def _slide_flow(cv, final, n, total, stories, kind):
             y += chip_h + 12 * cv.k
         bar = s.get("status") == "allegation" and kind == "national"
         x0 = 63 if bar else 42
-        head = {"national": 50 if i == 0 else 38, "world": 48, "biztech": 36}[kind]
+        head = {"national": 50 if i == 0 else 38, "world": 48, "biztech": 36, "sports": 38}[kind]
         y_start = y
         y = _story_block(cv, x0, y, 720 - (x0 - 42), s, lang, head, 21, head_role, body_role, head_color=head_color,
-                         image_mode="right" if kind == "biztech" else "below")
+                         image_mode="right" if kind in ("biztech", "sports") else "below")
         if bar:
             cv.image("bar_blue", 40, y_start - chip_h - 8 * cv.k, 16.5, (y - y_start) + chip_h + 8 * cv.k)
     if developing:
@@ -6037,7 +6041,7 @@ def _deck_draw(kind, cv, final, n, total, payload, all_links):
         return _slide_cover(cv, final, n, total)
     if kind == "top":
         return DECK_BOTTOM - _slide_top(cv, final, n, total, payload)
-    if kind in ("national", "world", "biztech"):
+    if kind in ("national", "world", "biztech", "sports"):
         return DECK_BOTTOM - _slide_flow(cv, final, n, total, payload, kind)
     if kind == "state":
         return DECK_BOTTOM - _slide_state(cv, final, n, total, payload)
@@ -6064,7 +6068,7 @@ def deck_overflow_report(final: dict, images=None, lang: str = "en") -> list:
     links = [l for s in final["stories"] if s["include"] for l in s.get("links", [])]
     out = []
     titles = {"cover": "Cover", "top": "Top story", "national": "National developments", "state": "State developments",
-              "world": "World affairs", "biztech": "Business & technology", "briefs": "In brief",
+              "world": "World affairs", "biztech": "Business & technology", "sports": "Sports", "briefs": "In brief",
               "takeaway": "Today's takeaway", "sources": "Sources"}
     for i, (kind, payload) in enumerate(plan, 1):
         k, room = _deck_fit(kind, final, i, len(plan), payload, lang, images or {}, links)
@@ -6513,8 +6517,8 @@ def main():
     ap.add_argument("--no-brave", action="store_true")
     ap.add_argument("--no-social-news", action="store_true")
     ap.add_argument("--carousel", nargs="?", const="both", default=None, metavar="STATES",
-                    help="DRAFT nine-slide daily news carousel (national, AP/Telangana, world, business, tech/science/"
-                         "health/environment/sports). STATES for the state slide: both (default), ap, telangana or "
+                    help="DRAFT ten-slide daily news carousel (national, AP/Telangana, world, business, tech/science/"
+                         "health/environment, sports). STATES for the state slide: both (default), ap, telangana or "
                          "none. Use --date for another day; --save/--pdf to keep it")
     ap.add_argument("--wrap-party", default="", metavar="PARTY",
                     help="With --wrap: a wrap-up about one party in AP/Telangana, e.g. BRS, TDP, YSRCP, Congress, BJP, "
