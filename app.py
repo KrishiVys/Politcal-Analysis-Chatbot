@@ -757,12 +757,11 @@ def render_editorial_review(c: dict, kp: str) -> None:
         st.caption("Translating to Telugu needs a Sarvam API key.")
     st.caption("Translate the review to get the Telugu slides and the Telugu sources page.")
     if st.button("🔤 Translate the review to Telugu (Sarvam)", key=f"{kp}_translate", disabled=client is None):
-        with st.spinner("Translating..."):
+        with st.spinner("Translating (a minute or so -- requests are paced to stay within Sarvam's limits)..."):
             problems = uc.translate_carousel(edit, client)
         st.session_state.pop(f"{kp}_deck_te", None)
-        if problems:
-            st.warning("Some text couldn't be translated and was left in English -- fix it below:\n"
-                       + "\n".join(f"- {p}" for p in problems[:10]))
+        show_translation_problems(problems)
+    telugu_check_ui(kp)
     has_te = any(s["te"] for s in edit["stories"] if s["include"]) or edit["cover"]["te"]
     if has_te:
         with st.form(f"{kp}_te_form"):
@@ -1009,6 +1008,25 @@ def render_regional(msg: dict, key_prefix: str) -> None:
                             + "</div>", unsafe_allow_html=True)
 
 
+def telugu_check_ui(kp: str) -> None:
+    """A button that tests Sarvam translation with one sentence and explains the result in plain words."""
+    if st.button("🔧 Check Telugu translation", key=f"{kp}_techeck",
+                 help="Sends one test sentence to Sarvam and shows exactly what happens"):
+        with st.spinner("Testing Sarvam translation..."):
+            r = uc.telugu_translation_check(client)
+        (st.success if r["ok"] else st.error)(r["message"])
+        if r["advice"]:
+            st.info(r["advice"])
+
+
+def show_translation_problems(problems: list) -> None:
+    if problems:
+        st.warning(f"{len(problems)} line(s) couldn't be translated -- they are left empty below so you can type "
+                   "the Telugu, or try again in a minute.")
+        with st.expander("What Sarvam said"):
+            st.code("\n".join(problems[:20]))
+
+
 def render_one_slider(msg: dict, kp: str) -> None:
     """One-slide headlines: review, edit, approve and download the single editable slide (English / Telugu)."""
     import copy as _copy
@@ -1068,9 +1086,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
         with st.spinner("Translating..."):
             problems = uc.translate_one_slider(edit, client)
         st.session_state.pop(f"{kp}_one_te", None)
-        if problems:
-            st.warning("Some headlines couldn't be translated -- type the Telugu below:\n"
-                       + "\n".join(f"- {p}" for p in problems[:8]))
+        show_translation_problems(problems)
+    telugu_check_ui(f"{kp}_one")
     if client is None:
         st.caption("Translating needs a Sarvam API key; you can also type the Telugu yourself below.")
     with st.form(f"{kp}_one_te_form"):
