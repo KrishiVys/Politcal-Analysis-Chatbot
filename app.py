@@ -756,10 +756,30 @@ def render_editorial_review(c: dict, kp: str) -> None:
     if client is None:
         st.caption("Translating to Telugu needs a Sarvam API key.")
     st.caption("Translate the review to get the Telugu slides and the Telugu sources page.")
-    if st.button("🔤 Translate the review to Telugu (Sarvam)", key=f"{kp}_translate", disabled=client is None):
-        with st.spinner("Translating (a minute or so -- requests are paced to stay within Sarvam's limits)..."):
-            problems = uc.translate_carousel(edit, client)
-        st.session_state.pop(f"{kp}_deck_te", None)
+    def _translate_review():
+        problems = uc.translate_carousel(edit, client)
+        ss = st.session_state                       # fill the Telugu boxes (runs before they are drawn)
+        ss[f"{kp}_te_hook"] = edit["cover"]["te"].get("hook", "")
+        for s_ in [x for x in edit["stories"] if x["include"]]:
+            p = f"{kp}_te_{s_['id']}"
+            for field in ("headline", "summary", "image_caption"):
+                ss[f"{p}_{field}"] = s_["te"].get(field, "")
+            ss[f"{p}_bullets"] = "\n".join(s_["te"].get("bullets", []))
+        for b in [x for x in edit["briefs"] if x["include"]]:
+            ss[f"{kp}_te_{b['id']}"] = b["te"].get("text", "")
+        for field in ("headline", "detail", "follow"):
+            ss[f"{kp}_te_tk_{field}"] = edit["takeaway"]["te"].get(field, "")
+        ss.pop(f"{kp}_deck_te", None)
+        ss[f"{kp}_tr_problems"] = problems
+
+    st.button("🔤 Translate the review to Telugu (Sarvam)", key=f"{kp}_translate", disabled=client is None,
+              on_click=_translate_review)
+    if f"{kp}_tr_problems" in st.session_state:
+        problems = st.session_state.pop(f"{kp}_tr_problems")
+        missing_now = uc.telugu_missing(edit)
+        (st.success if not missing_now else st.warning)(
+            "Translated -- check the Telugu below." if not missing_now else
+            f"Translated, but {len(missing_now)} line(s) still need Telugu -- they're listed below.")
         show_translation_problems(problems)
     telugu_check_ui(kp)
     has_te = any(s["te"] for s in edit["stories"] if s["include"]) or edit["cover"]["te"]
@@ -1063,6 +1083,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
             new = ss.get(f"{kp}_one_txt_{it['id']}", it["text"]).strip()
             if new != it["text"]:
                 it["te"] = {}                     # an edited headline needs translating again
+                ss.pop(f"{kp}_one_te_{it['id']}", None)   # and its old Telugu must not be saved back
             it["text"] = new
         edit["checked"] = bool(ss.get(f"{kp}_one_checked", edit["checked"]))
         edit["approver"] = ss.get(f"{kp}_one_approver", edit["approver"]).strip()
@@ -1082,10 +1103,22 @@ def render_one_slider(msg: dict, kp: str) -> None:
                            file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_EN.pptx", key=f"{kp}_one_dl_en",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
     st.markdown("**Telugu slide**")
-    if st.button("🔤 Translate the headlines to Telugu (Sarvam)", key=f"{kp}_one_tr", disabled=client is None):
-        with st.spinner("Translating..."):
-            problems = uc.translate_one_slider(edit, client)
+    def _translate_one():
+        # Runs BEFORE the page is drawn, so the Telugu boxes can be filled with the new text (Streamlit ignores
+        # new text given to a box it has already drawn -- that is what used to leave them empty).
+        problems = uc.translate_one_slider(edit, client)
+        for it in [i for i in edit["items"] if i["include"]]:
+            st.session_state[f"{kp}_one_te_{it['id']}"] = (it.get("te") or {}).get("text", "")
         st.session_state.pop(f"{kp}_one_te", None)
+        st.session_state[f"{kp}_one_tr_problems"] = problems
+
+    st.button("🔤 Translate the headlines to Telugu (Sarvam)", key=f"{kp}_one_tr", disabled=client is None,
+              on_click=_translate_one)
+    if f"{kp}_one_tr_problems" in st.session_state:
+        problems = st.session_state.pop(f"{kp}_one_tr_problems")
+        done = sum(1 for i in edit["items"] if i["include"] and uc.telugu_share((i.get("te") or {}).get("text", "")) >= 0.5)
+        total = sum(1 for i in edit["items"] if i["include"])
+        (st.success if done == total else st.warning)(f"Translated {done} of {total} headlines -- check them below.")
         show_translation_problems(problems)
     telugu_check_ui(f"{kp}_one")
     if client is None:
