@@ -6373,67 +6373,226 @@ def _translate_reply(resp) -> str:
     return str(out or "").strip()
 
 
+TRANSLATE_MIN_INTERVAL = float(os.environ.get("SARVAM_MIN_INTERVAL", "1.1"))  # s between requests (~55/min < 60/min)
+TRANSLATE_DEADLINE = 180         # seconds: translation never runs longer than this
+TRANSLATE_CHUNK = 1800           # characters per batched request (Sarvam Translate allows 2,000)
+_TR_LOCK = threading.Lock()
+_TR_LAST = [0.0]
+
+
+def _sarvam_pace() -> None:
+    """Space out Sarvam requests so a deck never trips the per-minute rate limit."""
+    with _TR_LOCK:
+        wait = _TR_LAST[0] + TRANSLATE_MIN_INTERVAL - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _TR_LAST[0] = time.monotonic()
+
+
+def _is_hard_stop(e: Exception) -> bool:
+    """Errors that won't fix themselves by retrying: a bad key, no access, no credits, an old package."""
+    t = str(e).lower()
+    return isinstance(e, TypeError) or any(k in t for k in ("401", "403", "invalid api", "unauthor", "forbidden",
+                                                             "credit", "402", "insufficient", "quota"))
+
+
+def _is_retryable(e: Exception) -> bool:
+    t = str(e).lower()
+    return any(k in t for k in ("429", "rate limit", "too many", "503", "502", "504", "timeout", "timed out",
+                                "temporar", "unavailable", "connection"))
+
+
+def _translate_call(client, text: str, model: str, **kw) -> str:
+    """One Sarvam /translate request, paced, with waits of 2, 4 and 8 s on rate limits / temporary errors."""
+    for attempt in range(4):
+        _sarvam_pace()
+        try:
+            return _translate_reply(client.text.translate(input=text, source_language_code="en-IN",
+                                                          target_language_code="te-IN", model=model, **kw))
+        except Exception as e:
+            if attempt < 3 and _is_retryable(e):
+                time.sleep(2 * 2 ** attempt)
+                continue
+            raise
+
+
+def _chat_translate(client, text: str, model: str = DEFAULT_MODEL) -> str:
+    messages = [{"role": "system", "content":
+                 "You are a professional English-to-Telugu news translator. Translate the user's text into natural, "
+                 "formal Telugu as used by Telugu newspapers. Keep names, numbers and party abbreviations accurate. "
+                 "If the text is a numbered list like [1] ..., keep every [n] marker and line. Reply with the Telugu "
+                 "translation only."},
+                {"role": "user", "content": text}]
+    for attempt in range(4):
+        _sarvam_pace()
+        try:
+            m = _call_sarvam(client, model, messages, max_tokens=3000).choices[0].message
+            return _strip_thinking(getattr(m, "content", None) or "").strip().strip('"')
+        except Exception as e:
+            if attempt < 3 and _is_retryable(e):
+                time.sleep(2 * 2 ** attempt)
+                continue
+            raise
+
+
 def _sarvam_translate(client, text: str, model: str = DEFAULT_MODEL) -> str:
-    """English -> Telugu. Each result is checked to really be Telugu; if not (an unchanged or transliterated reply,
-    common with short headline-style text), it tries Sarvam's second translation model, then the chat model as a
-    translator. Raises if none gives Telugu."""
+    """One text English -> Telugu, checked to really be Telugu: Sarvam Translate, then Mayura, then the chat model.
+    Raises with Sarvam's own error messages if none gives Telugu."""
     tries = []
-    try:
-        tries.append(_translate_reply(client.text.translate(input=text, source_language_code="en-IN",
-                                                            target_language_code="te-IN", model="sarvam-translate:v1")))
-    except Exception as e:
-        tries.append(f"error: {_short_error(e)}")
-    if _is_good_telugu(text, tries[-1]):
-        return tries[-1]
-    for kwargs in ({"model": "mayura:v1", "mode": "formal"}, {"model": "mayura:v1"}):
+    for use in ("sarvam-translate:v1", "mayura:v1"):
         try:
-            out = _translate_reply(client.text.translate(input=text, source_language_code="en-IN",
-                                                         target_language_code="te-IN", **kwargs))
+            out = _translate_call(client, text, use, **({"mode": "formal"} if use == "mayura:v1" else {}))
+        except TypeError:           # an older sarvamai without these options
+            try:
+                out = _translate_call(client, text, use)
+            except Exception as e:
+                out, _ = "", tries.append(f"{use}: {_short_error(e)}")
         except Exception as e:
-            out = f"error: {_short_error(e)}"
-        tries.append(out)
+            out, _ = "", tries.append(f"{use}: {_short_error(e)}")
         if _is_good_telugu(text, out):
             return out
+        if out:
+            tries.append(f"{use}: reply was not Telugu")
     if getattr(client, "chat", None) is not None:
-        messages = [{"role": "system", "content":
-                     "You are a professional English-to-Telugu news translator. Translate the user's text into natural, "
-                     "formal Telugu as used by Telugu newspapers. Keep names, numbers and party abbreviations accurate. "
-                     "Reply with the Telugu translation only."},
-                    {"role": "user", "content": text}]
         try:
-            m = _call_sarvam(client, model, messages, max_tokens=1500).choices[0].message
-            out = _strip_thinking(getattr(m, "content", None) or "").strip().strip('"')
+            out = _chat_translate(client, text, model)
+            if _is_good_telugu(text, out):
+                return out
+            tries.append("chat model: reply was not Telugu")
         except Exception as e:
-            out = f"error: {_short_error(e)}"
-        tries.append(out)
-        if _is_good_telugu(text, out):
-            return out
-    raise ValueError("no Telugu translation (" + "; ".join(t[:40] for t in tries if t) + ")")
+            tries.append(f"chat model: {_short_error(e)}")
+    raise ValueError("; ".join(tries) or "no Telugu translation")
 
 
-def translate_carousel(edit: dict, client, deadline_s: int = 90) -> list:
-    """Fill every Telugu field (edit[...]['te']) with Sarvam translations, in parallel. Fixed labels use the
-    template's own Telugu wording. Returns problems (fields left untranslated) -- those keep the English text
-    so the editor can see and fix them in the Telugu review."""
-    from concurrent.futures import ThreadPoolExecutor, wait
-    jobs = []
+def translate_texts_te(client, texts: list, model: str = DEFAULT_MODEL) -> tuple:
+    """Translate many texts with as FEW requests as possible: they are sent together as numbered lines
+    ([1] ... [2] ...) in chunks under Sarvam's 2,000-character limit. Every line's result is checked to be
+    Telugu; only lines that fail are retried one by one. Returns (results, errors) -- results[i] is "" where
+    no Telugu could be obtained."""
+    results = [""] * len(texts)
+    errors = []
+    stop = []                                    # set to Sarvam's message when continuing is pointless
+    deadline = time.monotonic() + TRANSLATE_DEADLINE
+    clean = [" ".join((t or "").split()) for t in texts]
+
+    def note_failure(e):
+        if _is_hard_stop(e) or _is_retryable(e):   # bad key / no credits / rate limit still blocking after retries
+            stop.append(_short_error(e))
+    todo = [i for i, t in enumerate(clean) if t]
+    chunks, cur, size = [], [], 0
+    for i in todo:
+        line = len(clean[i]) + 8
+        if cur and size + line > TRANSLATE_CHUNK:
+            chunks.append(cur)
+            cur, size = [], 0
+        cur.append(i)
+        size += line
+    if cur:
+        chunks.append(cur)
+
+    def parse(out, idx):
+        got = {}
+        for m in re.finditer(r"\[\s*(\d+)\s*\]\s*(.+?)(?=\s*\[\s*\d+\s*\]|$)", out or "", re.S):
+            k = int(m.group(1))
+            if 1 <= k <= len(idx):
+                got[idx[k - 1]] = " ".join(m.group(2).split())
+        return got
+
+    for idx in chunks:
+        if stop or time.monotonic() > deadline:
+            break
+        payload = "\n".join(f"[{k}] {clean[i]}" for k, i in enumerate(idx, 1))
+        got = {}
+        if len(idx) > 1 or len(payload) <= 2000:
+            try:
+                got = parse(_translate_call(client, payload, "sarvam-translate:v1"), idx)
+            except Exception as e:
+                errors.append(f"batch request: {_short_error(e)}")
+                note_failure(e)
+                if stop:
+                    break
+            if len(idx) > 1 and sum(1 for i in idx if _is_good_telugu(clean[i], got.get(i, ""))) < len(idx) \
+                    and getattr(client, "chat", None) is not None:
+                try:              # the chat model keeps numbered lists well -- one request for the rest
+                    rest = [i for i in idx if not _is_good_telugu(clean[i], got.get(i, ""))]
+                    more = parse(_chat_translate(client, "\n".join(f"[{k}] {clean[i]}" for k, i in enumerate(rest, 1)),
+                                                 model), rest)
+                    got.update({i: v for i, v in more.items() if _is_good_telugu(clean[i], v)})
+                except Exception as e:
+                    errors.append(f"chat batch: {_short_error(e)}")
+        for i in idx:
+            if _is_good_telugu(clean[i], got.get(i, "")):
+                results[i] = got[i]
+                continue
+            if stop or time.monotonic() > deadline:
+                break
+            try:                  # this line alone, through every route
+                results[i] = _sarvam_translate(client, clean[i][:1900], model)
+            except Exception as e:
+                errors.append(f"\u201c{clean[i][:50]}\u201d: {e}")
+                if any(k in str(e).lower() for k in ("401", "403", "invalid api", "credit", "insufficient", "quota",
+                                                      "429", "rate limit")):
+                    stop.append(str(e)[:120])
+    if stop:
+        left = sum(1 for i in todo if not results[i])
+        errors.append(f"Stopped early -- {left} line(s) not translated. Sarvam said: {stop[0]}. "
+                      "Use 'Check Telugu translation' to see what to do.")
+    elif time.monotonic() > deadline:
+        errors.append("Translation took too long and was stopped -- try again in a minute.")
+    return results, errors
+
+
+def telugu_translation_check(client) -> dict:
+    """Send one test sentence and explain the result in plain words (for the app's 'Check' button)."""
+    sample = "The Chief Minister announced a new scheme for farmers on Monday."
+    if client is None:
+        return {"ok": False, "message": "No Sarvam client -- SARVAM_API_KEY is not set or the sarvamai package "
+                                        "isn't installed.", "advice": "Add SARVAM_API_KEY and run: pip install -U sarvamai"}
+    try:
+        out = _translate_call(client, sample, "sarvam-translate:v1")
+        if _is_good_telugu(sample, out):
+            return {"ok": True, "message": f"Telugu translation is working: \u201c{out}\u201d", "advice": ""}
+        return {"ok": False, "message": f"Sarvam answered, but not in Telugu: \u201c{out[:120]}\u201d",
+                "advice": "Try again in a minute; if it repeats, report this reply to Sarvam support."}
+    except TypeError as e:
+        return {"ok": False, "message": f"The installed sarvamai package is too old for translation options ({e}).",
+                "advice": "Run: pip install -U sarvamai  (on Streamlit Cloud: reboot the app after updating "
+                          "requirements.txt)"}
+    except Exception as e:
+        t = str(e).lower()
+        advice = ("Rate limit reached -- wait a minute and try again, or check Dashboard > Rate Limits."
+                  if "429" in t or "rate limit" in t else
+                  "The API key is invalid or has no access to translation -- check SARVAM_API_KEY."
+                  if "403" in t or "401" in t or "invalid api" in t or "unauthor" in t else
+                  "Your Sarvam credits may be used up -- top up on the Sarvam dashboard (Billing)."
+                  if "credit" in t or "402" in t or "insufficient" in t or "quota" in t else
+                  "Check the internet connection and try again.")
+        return {"ok": False, "message": f"Sarvam returned an error: {_short_error(e)}", "advice": advice}
+
+
+def translate_carousel(edit: dict, client, deadline_s: int = 240) -> list:
+    """Fill every Telugu field (edit[...]['te']) with checked Sarvam translations, using batched requests.
+    Fixed labels use the template's own Telugu wording. Returns problems (with Sarvam's own error messages);
+    fields that couldn't be translated are left EMPTY, so they are listed and block the Telugu slides."""
+    jobs = []                                  # (target dict/list, key, English text)
     for s in edit["stories"]:
         if not s["include"]:
             continue
         for field in ("headline", "summary", "image_caption"):
             if s.get(field, "").strip():
                 jobs.append((s["te"], field, s[field]))
+        bullets = s.get("bullets") or []
+        if bullets:
+            s["te"]["bullets"] = [""] * len(bullets)
+            jobs += [(s["te"]["bullets"], i, b) for i, b in enumerate(bullets) if b.strip()]
         chip = (s.get("chip") or "").strip()
-        if chip and not _is_telugu(te_label(chip)):      # a label the template has no Telugu for
+        if chip and not _is_telugu(te_label(chip)):
             jobs.append((s["te"], "chip", chip))
-        for i, b in enumerate(s.get("bullets") or []):
-            if b.strip():
-                s["te"].setdefault("bullets", [""] * len(s["bullets"]))
-                jobs.append((s["te"]["bullets"], i, b))
     for b in edit["briefs"]:
         if b["include"] and b["text"].strip():
             jobs.append((b["te"], "text", b["text"]))
-    jobs.append((edit["cover"]["te"], "hook", edit["cover"]["hook"]))
+    if edit["cover"]["hook"].strip():
+        jobs.append((edit["cover"]["te"], "hook", edit["cover"]["hook"]))
     t = edit["takeaway"]
     for field in ("headline", "detail", "follow"):
         if t.get(field, "").strip():
@@ -6441,28 +6600,12 @@ def translate_carousel(edit: dict, client, deadline_s: int = 90) -> list:
                 t["te"][field] = TE_LABELS[t[field].strip()]
             else:
                 jobs.append((t["te"], field, t[field]))
-    problems = []
-
-    def run(job):
-        target, key, text = job
-        try:
-            target[key] = _sarvam_translate(client, text[:1900])
-        except Exception as e:
-            target[key] = text
-            problems.append(f"\u201c{text[:50]}\u201d: {_short_error(e)}")
-
-    pool = ThreadPoolExecutor(max_workers=6)
-    try:
-        futures = [pool.submit(run, j) for j in jobs]
-        done, late = wait(futures, timeout=deadline_s)
-        for f in late:
-            problems.append("a translation ran out of time")
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)
-    for target, key, text in jobs:
-        if isinstance(target, dict) and key not in target:
-            target[key] = text
-    return problems
+    if not jobs:
+        return []
+    results, errors = translate_texts_te(client, [j[2] for j in jobs])
+    for (target, key, _text), out in zip(jobs, results):
+        target[key] = out
+    return errors
 
 
 def telugu_missing(edit: dict) -> list:
@@ -6729,48 +6872,97 @@ def one_slider_problems(edit: dict, lang: str = "en") -> list:
 
 
 def translate_one_slider(edit: dict, client) -> list:
-    """Telugu for every ticked headline (checked to really be Telugu). Returns problems."""
-    from concurrent.futures import ThreadPoolExecutor
-    problems = []
+    """Telugu for every ticked headline (batched, checked to really be Telugu). Returns problems."""
+    items = [i for i in edit["items"] if i["include"]]
+    results, errors = translate_texts_te(client, [i["text"] for i in items])
+    for it, out in zip(items, results):
+        it.setdefault("te", {})["text"] = out
+    return errors
 
-    def run(item):
-        try:
-            item["te"]["text"] = _sarvam_translate(client, item["text"])
-        except Exception as e:
-            item["te"]["text"] = ""
-            problems.append(f"\u201c{item['text'][:50]}\u201d: {_short_error(e)}")
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        list(ex.map(run, [i for i in edit["items"] if i["include"]]))
-    return problems
+
+# A colour theme per topic (party colours deliberately avoided, to stay neutral).
+ONE_SLIDER_THEMES = {
+    "hyderabad": {"primary": "4C1D95", "accent": "F5C451", "tint": "F5F2FA"},   # royal plum + pearl gold
+    "ap":        {"primary": "0F766E", "accent": "99F6E4", "tint": "F0F8F7"},   # deep teal + mint
+    "telangana": {"primary": "881337", "accent": "FDA4AF", "tint": "FBF3F5"},   # deep crimson + rose
+    "sports":    {"primary": "166534", "accent": "BEF264", "tint": "F2F8F2"},   # pitch green + lime
+    "national":  {"primary": "0B2545", "accent": "F87171", "tint": "F2F4F8"},   # midnight navy + coral
+    "biztech":   {"primary": "111827", "accent": "22D3EE", "tint": "F3F5F7"},   # charcoal + electric cyan
+}
+ONE_SLIDER_BAND = 300            # height of the coloured top band (pt)
+
+
+def _one_shape(cv, kind, x, y, w, h, fill, line=None, name=None, adj=None):
+    if cv.slide is None:
+        return None
+    shp = cv.slide.shapes.add_shape(kind, Pt(x), Pt(y), Pt(w), Pt(h))
+    if adj is not None:
+        shp.adjustments[0] = adj
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = RGBColor.from_string(fill)
+    if line:
+        shp.line.color.rgb = RGBColor.from_string(line)
+        shp.line.width = Pt(1)
+    else:
+        shp.line.fill.background()
+    shp.shadow.inherit = False
+    if name:
+        shp.name = name
+    return shp
 
 
 def _slide_one(cv, edit):
+    """The one-slide headlines in their topic's colours: a colour band with the topic, then numbered headline cards."""
     lang = cv.lang
-    cv.background("bg_light")
-    cv.image("logo_red", 23.7, -6.5, 101.3, 101.3)
-    cv.lettering("header", 118, 40, 360, 19, role="brand", color="navy", fit_h=26, name="Header")
-    cv.text(540, 39, 224, _deck_date(edit), 19, role="brand", color="navy", bold=True, align="right", scaled=False,
+    th = ONE_SLIDER_THEMES.get(edit["topic"], ONE_SLIDER_THEMES["national"])
+    if cv.slide is not None:
+        bg = cv.slide.background.fill
+        bg.solid()
+        bg.fore_color.rgb = RGBColor.from_string(th["tint"])
+    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, 0, DECK_W, ONE_SLIDER_BAND, th["primary"], name="Colour band")
+    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, ONE_SLIDER_BAND, DECK_W, 8, th["accent"], name="Accent bar")
+    cv.image("logo_white", 24, 14, 70, 70)
+    cv.lettering("header", 104, 36, 380, 18, role="body", color="white", fit_h=26, name="Header")
+    cv.text(520, 36, 262, _deck_date(edit), 18, role="body", color="white", bold=True, align="right", scaled=False,
             name="Date")
-    cv.image("divider_header", 30.6, 86.1, 748.5, 14.2)
-    chip = (edit.get("te") or {}).get("chip") if lang == "te" else edit["chip"]
-    cv.chip(42, 112, chip or edit["chip"], "chip_teal" if edit["topic"] in ("biztech",) else "chip_blue", 22,
-            scaled=False)
-    title = (edit.get("te") or {}).get("title") or ONE_SLIDER_TITLE["te"] if lang == "te" else edit.get("title") or ONE_SLIDER_TITLE["en"]
-    cv.text(30, 160, 740, title, 66 if lang == "en" else 46, role="serif", color="black", bold=True, scaled=False,
-            name="Title")
-    cv.image("divider_footer", 30.6, 262, 748.5, 14.2)
-    y = 300
+    topic = ((edit.get("te") or {}).get("chip") or ONE_SLIDER_TOPICS[edit["topic"]]["te_chip"]) if lang == "te" \
+        else (edit.get("chip") or ONE_SLIDER_TOPICS[edit["topic"]]["chip"])
+    size = 96 if lang == "en" else 72
+    while size > 40 and (_text_width(topic, size, cv.kind_for("display"), True) > 740):
+        size -= 4
+    cv.text(34, 104, 750, topic, size, role="display", color="white", bold=True, scaled=False, name="Topic")
+    sub = ((edit.get("te") or {}).get("title") or ONE_SLIDER_TITLE["te"]) if lang == "te" \
+        else (edit.get("title") or ONE_SLIDER_TITLE["en"])
+    cv.text(38, 104 + size * 1.18 + 6, 740, sub.rstrip("."), 30 if lang == "en" else 26, role="body",
+            color=th["accent"], bold=True, scaled=False, name="Subtitle")
+
+    y = ONE_SLIDER_BAND + 40
     items = [i for i in edit["items"] if i["include"]][:ONE_SLIDER_MAX]
+    gap = 18 * min(cv.k, 1.2)
     for n, it in enumerate(items, 1):
-        if n > 1:
-            cv.image("divider_row", 46.2, y - 18 * cv.k, 717.7, 14.2)
         text = (it.get("te") or {}).get("text", "") if lang == "te" else it["text"]
-        h = cv.text(169, y, 580, text, 27, role="brand", color="black", bold=True, name=f"Headline {n}")
-        cv.text(52, y - 4, 84, f"{n})", min(44 * cv.k, 50), role="brand", color="brief_num", bold=True,
-                scaled=False, name=f"Number {n}")
-        cv.image("brief_bar", 139.5, y - 6, 16.5, max(h + 8, 44 * cv.k * 1.2))
-        y += max(h, 44 * cv.k * 1.2) + 36 * cv.k
-    cv.image("divider_footer", 30.6, 990.8, 748.5, 14.2)
+        size_h = 27
+        th_txt = _text_height(text, size_h * cv.k, 570, cv.kind_for("brand"), True, 1.0)
+        card_h = max(th_txt + 34 * min(cv.k, 1.2), 84 * min(cv.k, 1.2))
+        _one_shape(cv, MSO_SHAPE.ROUNDED_RECTANGLE, 32, y, 746, card_h, "FFFFFF", line="E5E7EB",
+                   name=f"Card {n}", adj=0.08)
+        _one_shape(cv, MSO_SHAPE.RECTANGLE, 32, y + 10, 7, card_h - 20, th["primary"], name=f"Card edge {n}")
+        d = 52 * min(cv.k, 1.15)
+        circle = _one_shape(cv, MSO_SHAPE.OVAL, 62, y + (card_h - d) / 2, d, d, th["primary"], name=f"Number {n}")
+        if circle is not None:
+            tf = circle.text_frame
+            tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            p = tf.paragraphs[0]
+            p.alignment = PP_ALIGN.CENTER
+            r = p.add_run()
+            r.text = str(n)
+            r.font.size, r.font.bold = Pt(26 * min(cv.k, 1.15)), True
+            r.font.color.rgb = RGBColor.from_string("FFFFFF")
+            _deck_set_font(r, cv.font_for("brand"), False)
+        cv.text(140, y + 8, 600, text, size_h, role="brand", color="181818", bold=True, h=card_h - 16,
+                anchor="middle", name=f"Headline {n}")      # centred in its card, however many lines it takes
+        y += card_h + gap
     names = []
     for it in items:
         for l in it["links"]:
@@ -6779,9 +6971,10 @@ def _slide_one(cv, edit):
     if names:
         prefix = te_label("SOURCES:") if lang == "te" else "Sources:"
         more = f" +{len(names) - 8}" if len(names) > 8 else ""
-        cv.text(39, 1010, 730, prefix + " " + ", ".join(names[:8]) + more, 17, role="brand", color="navy", bold=True,
-                scaled=False, h=60, name="Sources")
-    return DECK_BOTTOM - (y - 36 * cv.k)
+        cv.text(36, 1012, 740, prefix + " " + ", ".join(names[:8]) + more, 15, role="brand", color="475569", bold=True,
+                scaled=False, h=44, name="Sources")
+    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, 1068, DECK_W, 12, th["primary"], name="Closing bar")
+    return 1000 - (y - gap)
 
 
 def build_one_slider_pptx(edit: dict, lang: str = "en") -> bytes:
