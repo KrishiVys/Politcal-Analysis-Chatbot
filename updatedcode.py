@@ -3910,6 +3910,8 @@ CAROUSEL_CHECKLIST = [
 _CAROUSEL_PRIMARY = _rx([r"pib\b", r"press information bureau", r"[a-z0-9-]+\.gov\.in", r"[a-z0-9-]+\.nic\.in",
                          r"rbi\.org\.in", r"un\.org", r"who\.int", r"[a-z0-9-]+\.gov\b"])
 _CAROUSEL_ESTABLISHED = _rx([
+    r"siasat", r"namasthe ?telangana", r"andhra ?jyothy", r"andhrajyothy", r"ntv ?telugu", r"ntvtelugu", r"tv9 ?telugu",
+    r"tv9telugu", r"v6 ?velugu", r"v6velugu", r"etv ?bharat", r"etvbharat",
     r"the hindu\b", r"thehindu", r"indian express", r"indianexpress", r"new indian express", r"newindianexpress",
     r"hindustan times", r"hindustantimes", r"times of india", r"timesofindia", r"ndtv", r"pti\b", r"press trust",
     r"reuters", r"associated press", r"apnews", r"bbc\b", r"livemint", r"mint\b", r"economic times", r"economictimes",
@@ -6715,19 +6717,19 @@ def carousel_sources_html(final: dict, lang: str = "en") -> str:
 ONE_SLIDER_TOPICS = {
     "hyderabad": {"label": "Hyderabad News", "chip": "HYDERABAD", "te_chip": "హైదరాబాద్", "political": True,
                   "state": "telangana",
-                  "queries": ['Hyderabad (GHMC OR MLA OR minister OR "Revanth Reddy" OR KTR OR Owaisi OR BRS OR BJP OR '
-                              'Congress OR AIMIM OR HYDRAA OR corporator OR policy)',
-                              'Hyderabad (government OR scheme OR cabinet OR GO OR project OR Metro OR Musi)']},
+                  "queries": ['Hyderabad politics', 'Hyderabad GHMC', 'HYDRAA Hyderabad', 'Hyderabad MLA',
+                              'Hyderabad BRS Congress', 'Owaisi Hyderabad', 'Hyderabad Metro', 'Hyderabad corporators',
+                              'Hyderabad government scheme']},
     "ap": {"label": "AP News", "chip": "ANDHRA PRADESH", "te_chip": "ఆంధ్రప్రదేశ్", "political": True,
            "state": "andhra pradesh",
-           "queries": ['"Andhra Pradesh" ("Chandrababu Naidu" OR "Pawan Kalyan" OR Jagan OR Lokesh OR TDP OR YSRCP OR '
-                       '"Jana Sena" OR minister OR MLA)',
-                       '"Andhra Pradesh" (cabinet OR policy OR scheme OR GO OR bill OR budget OR government OR Amaravati)']},
+           "queries": ['Andhra Pradesh politics', '"Chandrababu Naidu"', '"Pawan Kalyan"', 'Jagan YSRCP',
+                       '"Nara Lokesh"', 'Andhra Pradesh minister', 'Andhra Pradesh cabinet',
+                       'Andhra Pradesh government scheme', 'Amaravati capital']},
     "telangana": {"label": "Telangana News", "chip": "TELANGANA", "te_chip": "తెలంగాణ", "political": True,
                   "state": "telangana",
-                  "queries": ['Telangana ("Revanth Reddy" OR KCR OR KTR OR "Harish Rao" OR BRS OR BJP OR Congress OR '
-                              'minister OR MLA)',
-                              'Telangana (cabinet OR policy OR scheme OR GO OR bill OR budget OR government)']},
+                  "queries": ['Telangana politics', '"Revanth Reddy"', 'KTR BRS', '"Harish Rao"', 'Telangana BJP',
+                              'Telangana minister', 'Telangana cabinet', 'Telangana government scheme',
+                              'Telangana Congress', 'Telangana High Court']},
     "sports": {"label": "Sports News", "chip": "SPORTS", "te_chip": "క్రీడలు", "political": False, "state": None,
                "queries": ['(cricket OR football OR hockey OR badminton OR tennis OR chess OR athletics OR kabaddi) India',
                            '(BCCI OR "Team India" OR Olympic OR medal OR tournament OR championship)']},
@@ -6749,9 +6751,42 @@ _ONE_POLITICAL_RX = re.compile(
                      r"budget", r"assembly", r"council", r"elections?\b", r"polls?\b", r"bypoll", r"part(y|ies)\b",
                      r"ordinance", r"corporators?\b", r"mayor", r"opposition", r"ruling", r"governor",
                      r"collector", r"protest", r"rally", r"campaign", r"high court", r"supreme court"]).pattern]), re.I)
-_HYDERABAD_RX = _rx([r"hyderabad", r"secunderabad", r"cyberabad", r"ghmc", r"hydraa", r"hmda", r"musi", r"charminar",
-                     r"jubilee hills", r"banjara hills", r"gachibowli", r"kukatpally", r"lb nagar", r"uppal",
-                     r"malkajgiri", r"medchal", r"old city", r"hitec city", r"shamshabad", r"rangareddy", r"ranga reddy"])
+ONE_SLIDER_LEADERS = [
+    # Telangana -- Congress
+    r"revanth", r"bhatti", r"uttam kumar", r"komatireddy", r"ponnam", r"seethakka", r"sridhar babu", r"jupally",
+    r"tummala", r"konda surekha", r"damodar raja", r"ponguleti", r"mahesh kumar goud", r"vivek venkat", r"adluri",
+    r"vakiti", r"danam", r"madhu yashki",
+    # Telangana -- BRS
+    r"kcr", r"ktr", r"k\.? ?t\.? ?rama rao", r"chandrashekar rao", r"chandrasekhar rao", r"harish rao", r"kavitha",
+    r"kadiyam", r"talasani", r"kaushik reddy", r"jagadish reddy", r"vemula prashanth", r"sabitha", r"prashanth reddy",
+    # Telangana -- BJP / AIMIM / others
+    r"kishan reddy", r"bandi sanjay", r"ramchander rao", r"eatala", r"etela", r"raghunandan", r"dharmapuri arvind",
+    r"raja singh", r"dk aruna", r"d\.? ?k\.? aruna", r"madhavi latha", r"owaisi", r"akbaruddin", r"kodandaram",
+    # Andhra Pradesh
+    r"naidu", r"chandrababu", r"lokesh", r"pawan kalyan", r"jagan", r"sharmila", r"atchannaidu", r"atchennaidu",
+    r"nadendla", r"anitha", r"payyavula", r"purandeswari", r"pvn madhav", r"botcha", r"peddireddy", r"sajjala",
+    r"ram mohan naidu", r"rammohan naidu", r"ambati", r"roja", r"kodali", r"perni", r"vallabhaneni", r"satya kumar",
+    r"kollu ravindra", r"nimmala", r"anagani", r"gottipati",
+    # governments' agencies, flagship schemes and projects
+    r"hydraa", r"ghmc", r"hmda", r"tgsrtc", r"tsrtc", r"apsrtc", r"tgpsc", r"tspsc", r"appsc", r"rythu bharosa",
+    r"rythu bandhu", r"indiramma", r"kalyana lakshmi", r"shaadi mubarak", r"aarogyasri", r"gruha jyothi", r"mahalakshmi",
+    r"kaleshwaram", r"musi", r"medigadda", r"polavaram", r"amaravati", r"talliki vandanam", r"annadata", r"caste survey",
+    r"caste census", r"bc reservation", r"bc quota", r"waqf", r"metro rail", r"metro phase", r"regional ring road",
+    r"future city", r"lagacherla",
+]
+_ONE_POLITICAL_RX = re.compile(_ONE_POLITICAL_RX.pattern + "|" + _rx(ONE_SLIDER_LEADERS).pattern, re.I)
+
+_HYDERABAD_RX = _rx([r"hyderabad", r"secunderabad", r"cyberabad", r"rachakonda", r"ghmc", r"hydraa", r"hmda", r"musi",
+                     r"charminar", r"old city", r"metro rail", r"metro phase", r"hyderabad metro", r"tank bund", r"hussain ?sagar", r"necklace road", r"indira park",
+                     r"dharna chowk", r"gandhi bhavan", r"telangana bhavan", r"praja bhavan", r"lb stadium", r"nampally",
+                     r"khairatabad", r"musheerabad", r"malakpet", r"amberpet", r"sanathnagar", r"karwan", r"goshamahal",
+                     r"chandrayangutta", r"yakutpura", r"bahadurpura", r"cantonment", r"jubilee hills", r"banjara hills",
+                     r"gachibowli", r"kukatpally", r"quthbullapur", r"qutbullapur", r"serilingampally", r"rajendranagar",
+                     r"maheshwaram", r"l\.? ?b\.? ?nagar", r"uppal", r"malkajgiri", r"medchal", r"patancheru",
+                     r"shamshabad", r"rangareddy", r"ranga reddy", r"hitec ?city", r"hitech ?city", r"madhapur",
+                     r"kondapur", r"miyapur", r"begumpet", r"ameerpet", r"dilsukhnagar", r"mehdipatnam", r"tolichowki",
+                     r"golconda", r"gandipet", r"kokapet", r"financial district", r"owaisi", r"akbaruddin", r"danam",
+                     r"raja singh", r"talasani", r"madhavi latha", r"vijayalakshmi"])
 
 
 def detect_one_slider_request(text: str):
@@ -6774,7 +6809,10 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
     day = day or ist_today()
     validate_wrap_range(day, day)
     start, end = ist_day_window(day)
-    window = f"after:{(day - timedelta(days=1)):%Y-%m-%d} before:{(day + timedelta(days=1)):%Y-%m-%d}"
+    if day == ist_today():                    # today: all of today AND the last 24 hours (mornings aren't empty)
+        now = utc_now()
+        start, end = min(start, now - timedelta(hours=24)), max(end, now)
+    window = f"after:{(day - timedelta(days=2)):%Y-%m-%d} before:{(day + timedelta(days=1)):%Y-%m-%d}"
     status = {}
 
     def google(q):
@@ -6782,7 +6820,7 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
             return get_google_news_fallback(f"{q} {window}", 100, start, end), ""
         except Exception as e:
             return [], _short_error(e)
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=8) as ex:
         results = list(ex.map(google, cfg["queries"]))
     arts = []
     for q, (got, err) in zip(cfg["queries"], results):
