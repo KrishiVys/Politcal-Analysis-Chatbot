@@ -560,6 +560,9 @@ def _review_apply(edit: dict, images: dict, kp: str) -> list:
         p = f"{kp}_rv_{b['id']}"
         b["include"] = bool(ss.get(p + "_inc", b["include"]))
         b["text"] = ss.get(p + "_txt", b["text"]).strip()
+    for item in list(edit["stories"]) + list(edit["briefs"]):     # stories / briefs ticked for removal
+        if ss.get(f"{kp}_rv_{item['id']}_del"):
+            uc.remove_story(edit, item["id"])
     t = edit["takeaway"]
     t["headline"] = ss.get(f"{kp}_rv_tk_head", t["headline"]).strip()
     t["detail"] = ss.get(f"{kp}_rv_tk_detail", t["detail"]).strip()
@@ -607,19 +610,85 @@ def render_editorial_review(c: dict, kp: str) -> None:
     st.caption("Check and edit every story, add licensed images with their credits, complete the checklist and "
                "approve. Only an approved review is built into the final slides, in the CamPen template.")
 
+    edit.setdefault("slide_order", list(uc.DECK_MOVABLE))
+    edit.setdefault("removed", [])
+    if f"{kp}_saved_note" in st.session_state:
+        for msg in st.session_state.pop(f"{kp}_saved_note"):
+            st.error(msg)
+        st.success("Review saved.")
+
+    def _changed():
+        for k in (f"{kp}_deck_en", f"{kp}_deck_te"):     # built slides are out of date after a change
+            st.session_state.pop(k, None)
+
+    def _move(key, step):
+        uc.move_slide(edit, key, step)
+        _changed()
+
+    def _restore(item_id):
+        uc.restore_story(edit, item_id)
+        st.session_state[f"{kp}_rv_{item_id}_del"] = False   # callbacks run before widgets: allowed here
+        _changed()
+
+    with st.expander("🔀 Slide order", expanded=False):
+        st.caption("Move slides up or down. The cover is always first and the sources (QR) slide always last. "
+                   "Slides with no ticked stories are left out of the final deck.")
+        order = uc.deck_slide_order(edit)
+        st.markdown("**1. Cover** · fixed")
+        for i, key in enumerate(order):
+            n_items = (len([b for b in edit["briefs"] if b["include"]]) if key == "briefs" else
+                       1 if key == "takeaway" else len(uc.deck_section_stories(edit, key)))
+            c1, c2, c3 = st.columns([8, 1, 1])
+            c1.markdown(f"**{i + 2}. {uc.DECK_SLIDE_NAMES[key]}**" + ("" if n_items else " · *empty, left out*"))
+            c2.button("⬆️", key=f"{kp}_up_{key}", on_click=_move, args=(key, -1), disabled=i == 0,
+                      help="Move up")
+            c3.button("⬇️", key=f"{kp}_down_{key}", on_click=_move, args=(key, 1), disabled=i == len(order) - 1,
+                      help="Move down")
+        st.markdown(f"**{len(order) + 2}. Sources (QR)** · fixed")
+    if edit["removed"]:
+        with st.expander(f"🗑️ Removed stories ({len(edit['removed'])})"):
+            for r in edit["removed"]:
+                it = r["item"]
+                c1, c2 = st.columns([8, 2])
+                c1.markdown(("📰 " if r["kind"] == "story" else "• ") + (it.get("headline") or it.get("text") or it["id"])[:100])
+                c2.button("↩️ Restore", key=f"{kp}_restore_{it['id']}", on_click=_restore, args=(it["id"],))
+
+    numbers = {key: i + 2 for i, key in enumerate(uc.deck_slide_order(edit))}
     with st.form(f"{kp}_review_form"):
         st.markdown("#### Slide 1 — Cover")
         st.text_area("Cover line (hook)", edit["cover"]["hook"], key=f"{kp}_rv_hook", height=70)
-        for sec, title, mx in uc.DECK_SECTIONS:
+        maxes = {sec: mx for sec, _t, mx in uc.DECK_SECTIONS}
+        for sec in uc.deck_slide_order(edit):
+            if sec == "briefs":
+                if edit["briefs"]:
+                    st.markdown(f"#### Slide {numbers['briefs']} — In brief  ·  up to {uc.DECK_MAX_BRIEFS}")
+                    for b in edit["briefs"]:
+                        p = f"{kp}_rv_{b['id']}"
+                        c1, c2, c3 = st.columns([1, 8, 1.4])
+                        c1.checkbox("Use", b["include"], key=p + "_inc")
+                        c2.text_input("Brief", b["text"], key=p + "_txt", label_visibility="collapsed")
+                        c3.checkbox("🗑️", False, key=p + "_del", help="Remove this brief")
+                continue
+            if sec == "takeaway":
+                st.markdown(f"#### Slide {numbers['takeaway']} — Today's takeaway")
+                t = edit["takeaway"]
+                st.text_input("Takeaway headline", t["headline"], key=f"{kp}_rv_tk_head")
+                st.text_area("Takeaway detail (e.g. what led the news in the Telugu states)", t["detail"],
+                             key=f"{kp}_rv_tk_detail", height=70)
+                st.text_input("Follow line", t["follow"], key=f"{kp}_rv_tk_follow")
+                continue
             group = [s for s in edit["stories"] if s["section"] == sec]
             if not group:
                 continue
-            st.markdown(f"#### {title.replace('--', '—')}  ·  up to {mx}")
+            st.markdown(f"#### Slide {numbers[sec]} — {uc.DECK_SLIDE_NAMES[sec]}  ·  up to {maxes[sec]}")
             for s in group:
                 p = f"{kp}_rv_{s['id']}"
                 with st.expander(("✅ " if s["include"] else "⬜ ") + (s["headline"] or s["id"])[:90],
                                  expanded=(sec == "top")):
-                    st.checkbox("Include on the slide", s["include"], key=p + "_inc")
+                    c0, c00 = st.columns(2)
+                    c0.checkbox("Include on the slide", s["include"], key=p + "_inc")
+                    c00.checkbox("🗑️ Remove this story", False, key=p + "_del",
+                                 help="Deletes it from the review (you can restore it from 'Removed stories')")
                     c1, c2 = st.columns(2)
                     c1.text_input("Label chip", s["chip"], key=p + "_chip")
                     c2.selectbox("Status tag", STATUS_CHOICES, index=STATUS_CHOICES.index(s["status"] or ""),
@@ -644,32 +713,19 @@ def render_editorial_review(c: dict, kp: str) -> None:
                         st.caption(f"⚠️ {f}")
                     if s["links"]:
                         st.caption("Sources: " + " · ".join(f"[{l['name']}]({l['url']})" for l in s["links"][:5]))
-        if edit["briefs"]:
-            st.markdown(f"#### Slide 8 — In brief  ·  up to {uc.DECK_MAX_BRIEFS}")
-            for b in edit["briefs"]:
-                p = f"{kp}_rv_{b['id']}"
-                c1, c2 = st.columns([1, 9])
-                c1.checkbox("Use", b["include"], key=p + "_inc")
-                c2.text_input("Brief", b["text"], key=p + "_txt", label_visibility="collapsed")
-        st.markdown("#### Slide 9 — Today's takeaway")
-        t = edit["takeaway"]
-        st.text_input("Takeaway headline", t["headline"], key=f"{kp}_rv_tk_head")
-        st.text_area("Takeaway detail (e.g. what led the news in the Telugu states)", t["detail"], key=f"{kp}_rv_tk_detail",
-                     height=70)
-        st.text_input("Follow line", t["follow"], key=f"{kp}_rv_tk_follow")
-        st.markdown("#### Slide 10 — Sources")
+        st.markdown(f"#### Slide {len(numbers) + 2} — Sources")
         st.text_input("Sources page link (becomes the QR code)", edit["sources_url"], key=f"{kp}_rv_url",
                       help="Download the sources page below, host it (e.g. on your website or Google Drive) and "
-                           "paste its link here. Without a link, slide 9 lists the outlets instead.")
+                           "paste its link here. Without a link, the sources slide lists the outlets instead.")
+        st.caption("Without a link, the sources slide lists the outlets instead of a QR code.")
         st.markdown("#### Editorial checklist")
         for i, item in enumerate(uc.CAROUSEL_CHECKLIST):
             st.checkbox(item, edit["checklist"][item], key=f"{kp}_rv_chk_{i}")
         st.text_input("Approving editor", edit["approver"], key=f"{kp}_rv_approver")
         saved = st.form_submit_button("💾 Save review")
     if saved:
-        for msg in _review_apply(edit, images, kp):
-            st.error(msg)
-        st.success("Review saved.")
+        st.session_state[f"{kp}_saved_note"] = _review_apply(edit, images, kp)
+        st.rerun()                     # redraw at once: removed stories gone, order and numbers up to date
 
     errors, warnings = uc.review_problems(edit, images)
     if errors:
@@ -953,9 +1009,100 @@ def render_regional(msg: dict, key_prefix: str) -> None:
                             + "</div>", unsafe_allow_html=True)
 
 
+def render_one_slider(msg: dict, kp: str) -> None:
+    """One-slide headlines: review, edit, approve and download the single editable slide (English / Telugu)."""
+    import copy as _copy
+    ek = f"{kp}_one_edit"
+    if ek not in st.session_state:
+        st.session_state[ek] = _copy.deepcopy(msg["one"])
+    edit = st.session_state[ek]
+    st.markdown(f"**📰 {edit['label']} — one-slide headlines · {edit['day']}**")
+    if not edit["items"]:
+        st.info("No verified headlines found for this topic and day. Try another day or topic.")
+        with st.expander("🔎 Sources checked"):
+            for k, v in edit["status"].items():
+                st.markdown(f"- **{k}:** {v}")
+        return
+    st.caption(("Headlines shortened by Sarvam AI" if edit["used_ai"] else "The outlets' own headlines (AI not available)")
+               + " · ranked by how many outlets carried each story · edit, untick, approve, then download the slide.")
+    with st.form(f"{kp}_one_form"):
+        st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
+        for it in edit["items"]:
+            c1, c2 = st.columns([1, 11])
+            c1.checkbox("Use", it["include"], key=f"{kp}_one_inc_{it['id']}")
+            c2.text_input(f"Headline {it['id']}", it["text"], key=f"{kp}_one_txt_{it['id']}",
+                          label_visibility="collapsed")
+            c2.caption(f"{it['verification']} · " + " · ".join(f"[{l['name']}]({l['url']})" for l in it["links"][:4])
+                       + (f" · outlet headline: “{it['original']}”" if it["original"] != it["text"] else ""))
+        st.checkbox("I checked these headlines against the linked sources", edit["checked"], key=f"{kp}_one_checked")
+        st.text_input("Approving editor", edit["approver"], key=f"{kp}_one_approver")
+        saved = st.form_submit_button("💾 Save")
+    if saved:
+        ss = st.session_state
+        edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
+        for it in edit["items"]:
+            it["include"] = bool(ss.get(f"{kp}_one_inc_{it['id']}", it["include"]))
+            new = ss.get(f"{kp}_one_txt_{it['id']}", it["text"]).strip()
+            if new != it["text"]:
+                it["te"] = {}                     # an edited headline needs translating again
+            it["text"] = new
+        edit["checked"] = bool(ss.get(f"{kp}_one_checked", edit["checked"]))
+        edit["approver"] = ss.get(f"{kp}_one_approver", edit["approver"]).strip()
+        for k in (f"{kp}_one_en", f"{kp}_one_te"):
+            ss.pop(k, None)
+        st.success("Saved.")
+    errs = uc.one_slider_problems(edit)
+    if errs:
+        st.error("**Before building the slide:**\n" + "\n".join(f"- {e}" for e in errs))
+    if st.button("✅ Approve & build the slide (English)", key=f"{kp}_one_build_en", disabled=bool(errs)):
+        try:
+            st.session_state[f"{kp}_one_en"] = uc.build_one_slider_pptx(edit, "en")
+        except Exception as e:
+            st.error(f"Couldn't build the slide: {e}")
+    if f"{kp}_one_en" in st.session_state:
+        st.download_button("⬇️ Download the slide (PowerPoint, editable)", st.session_state[f"{kp}_one_en"],
+                           file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_EN.pptx", key=f"{kp}_one_dl_en",
+                           mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+    st.markdown("**Telugu slide**")
+    if st.button("🔤 Translate the headlines to Telugu (Sarvam)", key=f"{kp}_one_tr", disabled=client is None):
+        with st.spinner("Translating..."):
+            problems = uc.translate_one_slider(edit, client)
+        st.session_state.pop(f"{kp}_one_te", None)
+        if problems:
+            st.warning("Some headlines couldn't be translated -- type the Telugu below:\n"
+                       + "\n".join(f"- {p}" for p in problems[:8]))
+    if client is None:
+        st.caption("Translating needs a Sarvam API key; you can also type the Telugu yourself below.")
+    with st.form(f"{kp}_one_te_form"):
+        for it in [i for i in edit["items"] if i["include"]]:
+            st.text_input(it["text"][:80], (it.get("te") or {}).get("text", ""), key=f"{kp}_one_te_{it['id']}")
+        te_saved = st.form_submit_button("💾 Save Telugu")
+    if te_saved:
+        for it in [i for i in edit["items"] if i["include"]]:
+            it.setdefault("te", {})["text"] = st.session_state.get(f"{kp}_one_te_{it['id']}", "").strip()
+        st.session_state.pop(f"{kp}_one_te", None)
+        st.success("Telugu saved.")
+    te_errs = uc.one_slider_problems(edit, "te")
+    if st.button("✅ Approve & build the slide (Telugu)", key=f"{kp}_one_build_te", disabled=bool(te_errs)):
+        try:
+            st.session_state[f"{kp}_one_te"] = uc.build_one_slider_pptx(edit, "te")
+        except Exception as e:
+            st.error(f"Couldn't build the Telugu slide: {e}")
+    if f"{kp}_one_te" in st.session_state:
+        st.download_button("⬇️ Download the Telugu slide (PowerPoint, editable)", st.session_state[f"{kp}_one_te"],
+                           file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_TE.pptx", key=f"{kp}_one_dl_te",
+                           mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+    with st.expander("🔎 Sources checked"):
+        for k, v in edit["status"].items():
+            st.markdown(f"- **{k}:** {v}")
+
+
 def render_assistant_message(msg: dict, key_prefix: str) -> None:
     """Shared by the live turn and history replay, so widget keys match on reruns
     (that is what makes buttons like "Run fresh" and the downloads work)."""
+    if msg.get("kind") == "oneslider":
+        render_one_slider(msg, key_prefix)
+        return
     if msg.get("kind") == "regional":
         if sd is None:
             st.warning("Constituency & region news needs site_data.py and ap_tg_data.json next to app.py.")
@@ -1017,7 +1164,8 @@ st.markdown(
 
 for key, default in [("messages", []), ("trigger_prompt", None), ("result_cache", {}),
                      ("recent_queries", []), ("force_fresh", False), ("trigger_wrap_range", None),
-                     ("trigger_wrap_party", None), ("trigger_carousel", None), ("trigger_regional", None)]:
+                     ("trigger_wrap_party", None), ("trigger_carousel", None), ("trigger_regional", None),
+                     ("trigger_one", None)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -1089,6 +1237,18 @@ with st.sidebar:
         st.caption("Political news only -- parties, leaders, elected representatives, elections -- tagged with "
                    "constituency numbers and shown on a map. Or type e.g. \"Kuppam news\", \"AC 175 AP\", "
                    "\"Rayalaseema this week\", \"Warangal district\".")
+
+    st.divider()
+    st.subheader("📰 One-slide headlines")
+    _one_keys = list(uc.ONE_SLIDER_TOPICS)
+    one_topic = st.selectbox("Topic", _one_keys, format_func=lambda k: uc.ONE_SLIDER_TOPICS[k]["label"], key="opt_one_topic")
+    one_day = st.date_input("Day (IST)", value=uc.ist_today(), max_value=uc.ist_today(), key="opt_one_day")
+    if st.button("📰 Make the one-slide headlines", use_container_width=True, key="one_btn"):
+        st.session_state.trigger_one = (one_topic, one_day)
+        st.session_state.trigger_prompt = f"One-slide headlines: {uc.ONE_SLIDER_TOPICS[one_topic]['label']} ({one_day:%d %b %Y})"
+        st.rerun()
+    st.caption("The day's major headlines on one editable slide. Hyderabad, AP and Telangana: political personalities "
+               "and policy only. Or type e.g. \"Telangana headlines\", \"sports one slider\".")
 
     st.divider()
     st.subheader("🎠 Daily news carousel (draft)")
@@ -1262,6 +1422,32 @@ def run_carousel_turn(query: str, day, states: str, key_prefix: str) -> None:
         st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
 
 
+def run_one_slider_turn(topic: str, day, key_prefix: str) -> None:
+    cache_key = ("oneslider", topic, str(day))
+    force_fresh = st.session_state.force_fresh
+    st.session_state.force_fresh = False
+    cached = st.session_state.result_cache.get(cache_key)
+    if use_cache and not force_fresh and cached and (time.time() - cached[0]) / 60 < CACHE_TTL_MINUTES:
+        msg = {"role": "assistant", "kind": "oneslider", "one": cached[1]}
+    else:
+        placeholder = st.empty()
+        log = ProgressLog(placeholder)
+        try:
+            with contextlib.redirect_stdout(log):
+                one = uc.gather_one_slider(topic, day, client)
+            placeholder.empty()
+        except Exception as e:
+            placeholder.empty()
+            text = f"Couldn't make the one-slide headlines: {e}"
+            st.error(text)
+            st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
+            return
+        st.session_state.result_cache[cache_key] = (time.time(), one, False)
+        msg = {"role": "assistant", "kind": "oneslider", "one": one}
+    render_assistant_message(msg, key_prefix)
+    st.session_state.messages.append(msg)
+
+
 def run_regional_turn(query: str, key: str, period: str, key_prefix: str) -> None:
     """One chat turn: political news for a constituency / Lok Sabha seat / district / region / party / leader."""
     start, end = reg_period_dates(period)
@@ -1389,8 +1575,16 @@ if prompt:
     key_prefix = f"msg{len(st.session_state.messages)}"  # index this reply will have in history
     wrap_choice = uc.detect_wrap_request(prompt, default=WRAP_CHOICES[wrap_label])
     with st.chat_message("assistant", avatar="🏛️"):
+        one = st.session_state.trigger_one
+        st.session_state.trigger_one = None
+        if one is None and not st.session_state.trigger_carousel and not st.session_state.trigger_wrap_range \
+                and not st.session_state.trigger_regional:
+            _t = uc.detect_one_slider_request(prompt)
+            one = (_t, uc.ist_today()) if _t else None
         reg = st.session_state.trigger_regional
         st.session_state.trigger_regional = None
+        if one:
+            reg = None
         if reg is None and sd is not None and not st.session_state.trigger_carousel \
                 and not st.session_state.trigger_wrap_range and not uc.detect_carousel_request(prompt):
             found = sd.detect_regional(prompt)       # a constituency, Lok Sabha seat, district or region named
@@ -1398,7 +1592,9 @@ if prompt:
                 reg = found
             elif found:
                 reg = (found, sd.detect_period(prompt) or reg_period)
-        if reg and reg[0] == "ask-state":
+        if one:
+            run_one_slider_turn(one[0], one[1], key_prefix)
+        elif reg and reg[0] == "ask-state":
             text = (f"Constituency number {reg[1]} exists in both Andhra Pradesh and Telangana -- which one? "
                     f"Try \"AC {reg[1]} AP\" or \"AC {reg[1]} Telangana\".")
             st.info(text)
