@@ -3930,12 +3930,34 @@ CAROUSEL_HASHTAG_ALLOW = {"news", "india", "dailynews", "dailybriefing", "newsup
                           "cricket", "politics"}
 
 
-def outlet_kind(name: str) -> str:
+_SOURCE_DOMAINS = {
+    "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "thehindu.com", "indianexpress.com",
+    "newindianexpress.com", "hindustantimes.com", "timesofindia.indiatimes.com", "ndtv.com",
+    "livemint.com", "economictimes.indiatimes.com", "business-standard.com", "financialexpress.com",
+    "deccanherald.com", "deccanchronicle.com", "theprint.in", "scroll.in", "indiatoday.in",
+    "telanganatoday.com", "thehansindia.com", "moneycontrol.com", "aljazeera.com", "theguardian.com",
+    "bloomberg.com", "cnbc.com", "espncricinfo.com", "sportstar.thehindu.com", "thenewsminute.com",
+    "thewire.in", "ddnews.gov.in", "firstpost.com", "wionews.com", "aninews.in", "ptinews.com",
+    "thefederal.com", "sakshi.com", "eenadu.net", "tribuneindia.com", "telegraphindia.com",
+    "outlookindia.com", "downtoearth.org.in", "thequint.com", "siasat.com", "ntnews.com",
+    "andhrajyothy.com", "ntvtelugu.com", "tv9telugu.com", "v6velugu.com", "etvbharat.com",
+}
+
+
+def outlet_kind(name: str, url: str = "") -> str:
     """'primary' (government/official source), 'established' (recognised news organisation) or 'other'."""
-    n = (name or "").lower()
-    if _CAROUSEL_PRIMARY.search(n):
+    n = (name or "").strip().lower()
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.") if url else ""
+    # A direct publisher hostname takes precedence over an untrusted feed label.
+    if host and host != "news.google.com":
+        if host.endswith((".gov.in", ".nic.in", ".gov")) or any(host == d or host.endswith("." + d) for d in ("rbi.org.in", "un.org", "who.int")):
+            return "primary"
+        return "established" if any(host == d or host.endswith("." + d) for d in _SOURCE_DOMAINS) else "other"
+    if _CAROUSEL_PRIMARY.fullmatch(n):
         return "primary"
-    return "established" if _CAROUSEL_ESTABLISHED.search(n) else "other"
+    aliases = {"bbc news": "bbc", "the times of india": "times of india", "the economic times": "economic times",
+               "the new indian express": "new indian express", "the associated press": "associated press"}
+    return "established" if _CAROUSEL_ESTABLISHED.fullmatch(aliases.get(n, n)) else "other"
 
 
 def _carousel_state_queries(state_keys: list) -> list:
@@ -4023,12 +4045,21 @@ def _story_link_records(story: dict) -> list:
     """Every outlet's article for a story, one per outlet: primary sources first,
     then established outlets, direct publisher links before Google News links."""
     recs, seen = [], set()
-    for it in story.get("items") or []:
-        k = _outlet_key(it.get("source", ""))
+    # Prefer direct publisher pages and collapse common spelling/domain aliases.
+    ordered = sorted(story.get("items") or [], key=lambda it: "news.google." in it.get("url", ""))
+    for it in ordered:
+        name = _outlet_key(it.get("source", ""))
+        host = (urlparse(it.get("url", "")).hostname or "").lower().removeprefix("www.")
+        domain = next((d for d in sorted(_SOURCE_DOMAINS, key=len, reverse=True)
+                       if host == d or host.endswith("." + d)), "")
+        identity = domain.split(".")[0] if domain else name.removesuffix(".com").removesuffix(".in")
+        k = re.sub(r"[^a-z0-9]", "", re.sub(r"^the\s+", "", identity))
+        if k == "thehindu":
+            k = "hindu"
         if not k or k in seen or not it.get("url"):
             continue
         seen.add(k)
-        recs.append({"name": it["source"], "url": it["url"], "kind": outlet_kind(it["source"]),
+        recs.append({"name": it["source"], "url": it["url"], "kind": outlet_kind(it["source"], it["url"]),
                      "direct": "news.google." not in it["url"]})
     order = {"primary": 0, "established": 1, "other": 2}
     return sorted(recs, key=lambda r: (order[r["kind"]], not r["direct"]))
@@ -6827,11 +6858,15 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
         arts += got
         status[f"Search: {q[:60]}"] = f"{len(got)} articles" + (f"; failed: {err}" if err else "")
     arts = _dedupe_articles(_filter_by_date(arts, start, end))
+    # The generic report filter allows an extra end day; a dated one-slide post must not.
+    outside = sum(a.get("date_parsed") is None or not start <= a["date_parsed"] <= end for a in arts)
+    arts = [a for a in arts if a.get("date_parsed") is not None and start <= a["date_parsed"] <= end]
+    status["Date checks"] = f"{outside} article(s) excluded: undated or outside the selected window"
     dropped = Counter()
     keep = []
     for a in arts:
         h = a.get("headline", "")
-        if cfg["state"] and is_off_state(h, cfg["state"]):
+        if cfg["state"] and (is_off_state(h, cfg["state"]) or not _rx(_WRAP_OWN_PLACES[cfg["state"]]).search(h)):
             dropped["about another state or country"] += 1
         elif cfg["political"] and not _ONE_POLITICAL_RX.search(h):
             dropped["not about political personalities or policy"] += 1
@@ -6843,6 +6878,7 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
     ranked = []
     for s in stories:
         s["links"] = _story_link_records(s)
+        s["outlets"] = [r["name"] for r in s["links"]]
         s["n_established"] = sum(1 for r in s["links"] if r["kind"] in ("established", "primary"))
         if s["n_established"] == 0 and len(s["outlets"]) < 2:
             dropped["single source, not an established outlet (can't be verified)"] += 1
@@ -6879,13 +6915,177 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
         text = ai if ai and len(ai.split()) <= 14 else original
         items.append({"id": s["cid"], "text": text, "original": original, "outlets": s["outlets"],
                       "links": [{"name": r["name"], "url": r["url"]} for r in s["links"][:6]],
-                      "n_established": s["n_established"], "include": True, "te": {},
+                      "n_established": s["n_established"], "include": True, "te": {}, "tag": suggest_tag(original),
                       "verification": f"Carried by {len(s['outlets'])} outlet(s), {s['n_established']} established"})
-    status["Headlines"] = (f"{len(items)} chosen from {len(ranked)} verified stories"
+    status["Headlines"] = (f"{len(items)} chosen from {len(ranked)} source-qualified stories (pending editorial checks)"
                            + (f"; left out: " + ", ".join(f"{n} {why}" for why, n in dropped.items()) if dropped else ""))
     return {"topic": topic, "label": cfg["label"], "chip": cfg["chip"], "day": day.isoformat(), "items": items,
             "title": ONE_SLIDER_TITLE["en"], "te": {}, "status": status, "used_ai": used_ai,
-            "approver": "", "checked": False}
+            "approver": "", "checked": False, "theme": topic, "show_counts": True, "follow": DECK_FOLLOW_DEFAULT,
+            "sources_url": ""}
+
+
+ONE_SLIDER_CAPTION_STYLES = {"concise": "Concise", "detailed": "Detailed"}
+ONE_SLIDER_HASHTAGS = {
+    "hyderabad": ["#Hyderabad", "#HyderabadNews"],
+    "ap": ["#AndhraPradesh", "#APNews"],
+    "telangana": ["#Telangana", "#TelanganaNews"],
+    "sports": ["#Sports", "#SportsNews"],
+    "national": ["#India", "#NationalNews"],
+    "biztech": ["#Business", "#Technology"],
+}
+
+
+def one_slider_signature(edit: dict) -> str:
+    """Bind captions and rechecks to exactly the selected, saved headlines and links."""
+    data = [edit.get("topic"), edit.get("day"), edit.get("title"),
+            [(i["id"], i["text"], i.get("links", [])) for i in edit["items"] if i.get("include")]]
+    return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def generate_one_slider_caption(edit: dict, style: str = "concise") -> dict:
+    """Source-grounded post copy; reuse reviewed headlines without inventing details."""
+    if style not in ONE_SLIDER_CAPTION_STYLES:
+        raise ValueError("Choose a supported caption style.")
+    items = [i for i in edit["items"] if i.get("include") and i.get("text", "").strip()]
+    if not items:
+        raise ValueError("Select and save at least one headline before generating a caption.")
+    day = datetime.fromisoformat(edit["day"]).strftime("%d %B %Y")
+    heading = f"{edit['label']} | {day}"
+    headlines = [" ".join(i["text"].split()) for i in items]
+    body = ("\n".join(f"• {h}" for h in headlines) if style == "detailed"
+            else "\n".join(headlines))
+    tags = ONE_SLIDER_HASHTAGS.get(edit["topic"], ["#News"]) + ["#CamPenMedia", "#DailyHeadlines"]
+    text = f"{heading}\n\n{body}\n\nFollow CamPen Media for more updates.\n\n" + " ".join(tags)
+    return {"text": text, "style": style, "signature": one_slider_signature(edit), "te": "",
+            "method": "Built from the selected headlines; no new claims added."}
+
+
+def one_slider_caption_text(edit: dict, lang: str = "en") -> str:
+    caption = edit.get("caption") or {}
+    if caption.get("signature") != one_slider_signature(edit):
+        return ""
+    return str(caption.get("te" if lang == "te" else "text") or "").strip()
+
+
+def _source_url_ok(url: str) -> bool:
+    from ipaddress import ip_address
+    try:
+        p = urlparse(url)
+        if p.scheme not in ("http", "https") or not p.hostname or p.username or p.password:
+            return False
+        host = p.hostname.lower().rstrip(".")
+        if host == "localhost" or host.endswith((".localhost", ".local")) or "." not in host:
+            return False
+        try:
+            return ip_address(host).is_global
+        except ValueError:
+            return True
+    except ValueError:
+        return False
+
+
+def _recheck_one_source(link: dict, headlines: list) -> dict:
+    url = str(link.get("url") or "").strip()
+    result = {"name": link.get("name", ""), "url": url, "resolved_url": "", "status": "unchecked",
+              "detail": "", "checked_at": f"{utc_now() + IST_OFFSET:%Y-%m-%d %H:%M} IST"}
+    if not _source_url_ok(url):
+        return dict(result, status="invalid", detail="A public HTTP(S) article link is required.")
+    response = None
+    try:
+        # A previous temporary decoder failure must not make all future rechecks fail.
+        match = _GNEWS_RX.match(url)
+        if match and _GNEWS_CACHE.get(match.group(1)) is None:
+            _GNEWS_CACHE.pop(match.group(1), None)
+        target = resolve_google_news_url(url)
+        if not target or not _source_url_ok(target) or (urlparse(target).hostname or "").endswith("news.google.com"):
+            return dict(result, status="unresolved", detail="Google News did not resolve to a publisher article.")
+        response = requests.get(target, headers=ARTICLE_HEADERS, timeout=(4, 7), stream=True)
+        result["resolved_url"] = getattr(response, "url", target)
+        code = response.status_code
+        if code in (401, 402, 403, 429, 451):
+            return dict(result, status="blocked", detail=f"HTTP {code}; check manually in a browser.")
+        if code >= 400:
+            return dict(result, status="broken", detail=f"Article returned HTTP {code}.")
+        if not _source_url_ok(result["resolved_url"]):
+            return dict(result, status="invalid", detail="Publisher redirected to an invalid article URL.")
+        content_type = (getattr(response, "headers", {}) or {}).get("Content-Type", "").lower()
+        if content_type and not any(t in content_type for t in ("html", "text/plain")):
+            return dict(result, status="unreadable", detail="Link did not return an HTML/text article.")
+        if BeautifulSoup is None:
+            return dict(result, status="manual", detail="Link responds, but article matching needs beautifulsoup4.")
+        page = _read_capped(response)
+        soup = BeautifulSoup(page, "html.parser")
+        title = soup.find("h1") or soup.find("title")
+        title = title.get_text(" ", strip=True) if title else ""
+        text = title + " " + _article_text_from_html(page, 6000)
+        words = _story_words(text, set())
+        for headline in headlines:
+            expected = _story_words(headline, set())
+            shared = expected & words
+            if expected and len(shared) >= min(3, len(expected)) and len(shared) / len(expected) >= .4:
+                return dict(result, status="matched", detail="Article text overlaps the headline. This is not fact verification.")
+        return dict(result, status="mismatch", detail="Page responds, but its text did not match the headline; check manually.")
+    except Exception as exc:
+        return dict(result, status="unreachable", detail=_short_error(exc))
+    finally:
+        if response is not None:
+            response.close()
+
+
+def recheck_one_slider_sources(edit: dict) -> dict:
+    """Check unique links once, using only the currently selected headlines."""
+    from concurrent.futures import ThreadPoolExecutor, wait
+    links = {}
+    for item in edit["items"]:
+        if not item.get("include"):
+            continue
+        for link in item.get("links", []):
+            url = link.get("url", "")
+            entry = links.setdefault(url, {"link": dict(link), "headlines": []})
+            entry["headlines"].append(item.get("original") or item["text"])
+    executor = ThreadPoolExecutor(max_workers=6)
+    futures = {executor.submit(_recheck_one_source, x["link"], x["headlines"]): url for url,x in links.items()}
+    try:
+        done, pending = wait(futures, timeout=25)
+        results = {futures[f]: f.result() for f in done}
+        for f in pending:
+            f.cancel()
+            url = futures[f]
+            results[url] = dict(links[url]["link"], status="timeout", resolved_url="",
+                                detail="Recheck deadline reached; check manually.", checked_at="")
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+    ordered = [results[url] for url in links]
+    return {"signature": one_slider_signature(edit), "results": ordered,
+            "checked_at": f"{utc_now() + IST_OFFSET:%Y-%m-%d %H:%M} IST",
+            "summary": dict(Counter(r["status"] for r in ordered))}
+
+
+def one_slider_sources_html(edit: dict) -> str:
+    import html
+    esc = html.escape
+    audit = edit.get("source_audit") or {}
+    current = audit.get("signature") == one_slider_signature(edit)
+    checked = {r["url"]: r for r in audit.get("results", [])} if current else {}
+    rows = []
+    for item in edit["items"]:
+        if not item.get("include"):
+            continue
+        links = []
+        for link in item.get("links", []):
+            url = link.get("url", "")
+            label = esc(link.get("name", "Source"))
+            anchor = f'<a href="{esc(url, quote=True)}" rel="noopener noreferrer">{label}</a>' if _source_url_ok(url) else label
+            check = checked.get(url, {})
+            links.append(f'<li>{anchor} — {esc(check.get("status", "not rechecked"))}: {esc(check.get("detail", ""))}</li>')
+        rows.append(f'<section><h2>{esc(item["text"])}</h2><ul>{"".join(links)}</ul></section>')
+    return ('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
+            '<title>CamPen headline sources</title><style>body{max-width:800px;margin:40px auto;padding:0 24px;'
+            'font:17px/1.6 system-ui;color:#102848}h2{font-size:21px}section{border-top:1px solid #ddd}</style>'
+            f'<h1>{esc(edit["label"])} — {esc(edit["day"])}</h1>'
+            '<p>Source links and automated accessibility checks. An accessible link does not establish the truth of a claim.</p>'
+            + ''.join(rows) + '</html>')
 
 
 def one_slider_problems(edit: dict, lang: str = "en") -> list:
@@ -6898,6 +7098,8 @@ def one_slider_problems(edit: dict, lang: str = "en") -> list:
         errs.append(f"At most {ONE_SLIDER_MAX} headlines fit on the slide.")
     if any(not i["text"].strip() for i in inc):
         errs.append("A ticked headline is empty.")
+    if inc and len(inc) <= ONE_SLIDER_MAX and _one_fit(edit, lang) is None:
+        errs.append("Too much text for one slide -- shorten the headlines or untick one.")
     if not edit.get("checked"):
         errs.append("Confirm the headlines were checked against the linked sources.")
     if not (edit.get("approver") or "").strip():
@@ -6912,9 +7114,10 @@ def one_slider_problems(edit: dict, lang: str = "en") -> list:
 def translate_one_slider(edit: dict, client) -> list:
     """Telugu for every ticked headline (batched, checked to really be Telugu). Returns problems."""
     items = [i for i in edit["items"] if i["include"]]
-    results, errors = translate_texts_te(client, [i["text"] for i in items])
+    results, errors = translate_texts_te(client, [i["text"] for i in items] + [edit.get("follow") or DECK_FOLLOW_DEFAULT])
     for it, out in zip(items, results):
         it.setdefault("te", {})["text"] = out
+    edit.setdefault("te", {})["follow"] = results[len(items)] if len(results) > len(items) else ""
     return errors
 
 
@@ -6927,7 +7130,22 @@ ONE_SLIDER_THEMES = {
     "national":  {"primary": "0B2545", "accent": "F87171", "tint": "F2F4F8"},   # midnight navy + coral
     "biztech":   {"primary": "111827", "accent": "22D3EE", "tint": "F3F5F7"},   # charcoal + electric cyan
 }
+ONE_SLIDER_THEME_NAMES = {"hyderabad": "Plum & gold", "ap": "Teal & mint", "telangana": "Crimson & rose",
+                          "sports": "Green & lime", "national": "Navy & coral", "biztech": "Charcoal & cyan"}
 ONE_SLIDER_BAND = 300            # height of the coloured top band (pt)
+ONE_SLIDER_BAND_COMPACT = 236    # used only when six long headlines would not fit otherwise
+ONE_SLIDER_BOTTOM = 925          # headline cards must end above the follow strip (pt)
+ONE_SLIDER_SCALES = (1.35, 1.25, 1.15, 1.05) + DECK_SCALES
+ONE_SLIDER_TAGS = ["", "allegation", "developing"]
+_TAG_ALLEGATION = re.compile(r"\b(alleg\w*|accus\w*|claims?|claimed|denies|denied|blames?)\b", re.I)
+_TAG_DEVELOPING = re.compile(r"\b(live|developing|breaking|ongoing)\b", re.I)
+
+
+def suggest_tag(text: str) -> str:
+    """A suggested status tag for a headline ('allegation' / 'developing' / ''); the editor can change it."""
+    if _TAG_ALLEGATION.search(text or ""):
+        return "allegation"
+    return "developing" if _TAG_DEVELOPING.search(text or "") else ""
 
 
 def _one_shape(cv, kind, x, y, w, h, fill, line=None, name=None, adj=None):
@@ -6949,58 +7167,119 @@ def _one_shape(cv, kind, x, y, w, h, fill, line=None, name=None, adj=None):
     return shp
 
 
+def _outlet_text(n: int, lang: str) -> str:
+    return f"{n} \u0c35\u0c3e\u0c30\u0c4d\u0c24\u0c3e \u0c38\u0c02\u0c38\u0c4d\u0c25\u0c32\u0c41" if lang == "te" else f"Reported by {n} outlets"
+
+
 def _slide_one(cv, edit):
-    """The one-slide headlines in their topic's colours: a colour band with the topic, then numbered headline cards."""
+    """The one-slide headlines in their topic's colours: a colour band with the topic, a highlighted lead story,
+    numbered headline cards (with status tags and outlet counts), a follow strip and the sources."""
     lang = cv.lang
-    th = ONE_SLIDER_THEMES.get(edit["topic"], ONE_SLIDER_THEMES["national"])
+    compact = bool(getattr(cv, "compact", False))
+    th = ONE_SLIDER_THEMES.get(edit.get("theme") or edit["topic"], ONE_SLIDER_THEMES["national"])
+    band = ONE_SLIDER_BAND_COMPACT if compact else ONE_SLIDER_BAND
     if cv.slide is not None:
         bg = cv.slide.background.fill
         bg.solid()
         bg.fore_color.rgb = RGBColor.from_string(th["tint"])
-    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, 0, DECK_W, ONE_SLIDER_BAND, th["primary"], name="Colour band")
-    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, ONE_SLIDER_BAND, DECK_W, 8, th["accent"], name="Accent bar")
-    cv.image("logo_white", 24, 14, 70, 70)
+    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, 0, DECK_W, band, th["primary"], name="Colour band")
+    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, band, DECK_W, 8, th["accent"], name="Accent bar")
+    if os.path.isfile(os.path.join(CAROUSEL_ASSETS_DIR, "logo_white.png")):
+        cv.image("logo_white", 24, 14, 70, 70)
+    else:
+        cv.text(30, 30, 68, "CP", 27, color="white", bold=True, scaled=False, name="CamPen monogram")
     cv.lettering("header", 104, 36, 380, 18, role="body", color="white", fit_h=26, name="Header")
     cv.text(520, 36, 262, _deck_date(edit), 18, role="body", color="white", bold=True, align="right", scaled=False,
             name="Date")
     topic = ((edit.get("te") or {}).get("chip") or ONE_SLIDER_TOPICS[edit["topic"]]["te_chip"]) if lang == "te" \
         else (edit.get("chip") or ONE_SLIDER_TOPICS[edit["topic"]]["chip"])
-    size = 96 if lang == "en" else 72
-    while size > 40 and (_text_width(topic, size, cv.kind_for("display"), True) > 740):
+    size = ((72 if compact else 96) if lang == "en" else (56 if compact else 72))
+    while size > 36 and (_text_width(topic, size, cv.kind_for("display"), True) > 740):
         size -= 4
-    cv.text(34, 104, 750, topic, size, role="display", color="white", bold=True, scaled=False, name="Topic")
+    top = 100 if compact else 104
+    cv.text(34, top, 750, topic, size, role="display", color="white", bold=True, scaled=False, name="Topic")
     sub = ((edit.get("te") or {}).get("title") or ONE_SLIDER_TITLE["te"]) if lang == "te" \
         else (edit.get("title") or ONE_SLIDER_TITLE["en"])
-    cv.text(38, 104 + size * 1.18 + 6, 740, sub.rstrip("."), 30 if lang == "en" else 26, role="body",
-            color=th["accent"], bold=True, scaled=False, name="Subtitle")
+    cv.text(38, top + size * 1.18 + 6, 740, sub.rstrip("."), (28 if compact else 30) if lang == "en" else 26,
+            role="body", color=th["accent"], bold=True, scaled=False, name="Subtitle")
 
-    y = ONE_SLIDER_BAND + 40
+    if not compact:
+        count = sum(bool(i.get("include")) for i in edit["items"])
+        label = f"{count} HEADLINES" if lang == "en" else f"{count} ముఖ్యాంశాలు"
+        cv.text(540, band - 30, 220, label, 14, color=th["accent"], align="right", bold=True,
+                scaled=False, name="Headline count")
+
+    y = band + 8 + (26 if compact else 34)
     items = [i for i in edit["items"] if i["include"]][:ONE_SLIDER_MAX]
-    gap = 18 * min(cv.k, 1.2)
+    show_counts = edit.get("show_counts", True) and not compact
+    kk = min(cv.k, 1.2)
+    gap = 16 * kk
     for n, it in enumerate(items, 1):
+        lead = n == 1 and edit.get("highlight_lead", True)
         text = (it.get("te") or {}).get("text", "") if lang == "te" else it["text"]
-        size_h = 27
-        th_txt = _text_height(text, size_h * cv.k, 570, cv.kind_for("brand"), True, 1.0)
-        card_h = max(th_txt + 34 * min(cv.k, 1.2), 84 * min(cv.k, 1.2))
-        _one_shape(cv, MSO_SHAPE.ROUNDED_RECTANGLE, 32, y, 746, card_h, "FFFFFF", line="E5E7EB",
-                   name=f"Card {n}", adj=0.08)
-        _one_shape(cv, MSO_SHAPE.RECTANGLE, 32, y + 10, 7, card_h - 20, th["primary"], name=f"Card edge {n}")
+        size_h = 31 if lead else 27
+        th_txt = _text_height(text, size_h * cv.k, 585, cv.kind_for("brand"), True, 1.0)
+        tag = (it.get("tag") or "").strip().lower()
+        count = len(it.get("outlets") or [])
+        show_count = show_counts and count >= 2
+        has_sub = bool(tag) or show_count
+        sub_h = (24 if tag else 18) * kk if has_sub else 0
+        content_h = th_txt + ((6 * kk + sub_h) if has_sub else 0)
+        card_h = max(content_h + 30 * kk, 84 * kk)
+        ty = y + (card_h - content_h) / 2
+        _one_shape(cv, MSO_SHAPE.ROUNDED_RECTANGLE, 32, y, 746, card_h, th["primary"] if lead else "FFFFFF",
+                   line=None if lead else "E5E7EB", name=f"Card {n}", adj=0.08)
+        _one_shape(cv, MSO_SHAPE.RECTANGLE, 32, y + 10, 7, card_h - 20, th["accent"] if lead else th["primary"],
+                   name=f"Card edge {n}")
         d = 52 * min(cv.k, 1.15)
-        circle = _one_shape(cv, MSO_SHAPE.OVAL, 62, y + (card_h - d) / 2, d, d, th["primary"], name=f"Number {n}")
+        circle = _one_shape(cv, MSO_SHAPE.OVAL, 62, y + (card_h - d) / 2, d, d, th["accent"] if lead else th["primary"],
+                            name=f"Number {n}")
         if circle is not None:
             tf = circle.text_frame
             tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
             tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            p = tf.paragraphs[0]
-            p.alignment = PP_ALIGN.CENTER
-            r = p.add_run()
+            para = tf.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            r = para.add_run()
             r.text = str(n)
             r.font.size, r.font.bold = Pt(26 * min(cv.k, 1.15)), True
-            r.font.color.rgb = RGBColor.from_string("FFFFFF")
+            r.font.color.rgb = RGBColor.from_string(th["primary"] if lead else "FFFFFF")
             _deck_set_font(r, cv.font_for("brand"), False)
-        cv.text(140, y + 8, 600, text, size_h, role="brand", color="181818", bold=True, h=card_h - 16,
-                anchor="middle", name=f"Headline {n}")      # centred in its card, however many lines it takes
+        cv.text(140, ty, 600, text, size_h, role="brand", color="FFFFFF" if lead else "181818", bold=True,
+                name=f"Headline {n}")
+        source = next((link["url"] for link in it.get("links", []) if _source_url_ok(link.get("url", ""))), "")
+        if cv.slide is not None and source:
+            # Keep text editable while making the headline itself open its source article.
+            for paragraph in cv.slide.shapes[-1].text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.hyperlink.address = source
+        if has_sub:
+            sx, sy = 140, ty + th_txt + 6 * kk
+            if tag:
+                label = te_label(tag.upper()) if lang == "te" else tag.upper()
+                cw, _ch = cv.chip(sx, sy, label, "chip_red", 12, scaled=False)
+                sx += cw + 10
+            if show_count:
+                cv.text(sx, sy + 3, 500, _outlet_text(count, lang), 13, role="body",
+                        color=th["accent"] if lead else "64748B", bold=True, scaled=False, name=f"Outlets {n}")
         y += card_h + gap
+
+    # follow strip (the template's share icon + the follow line), then the sources
+    _one_shape(cv, MSO_SHAPE.ROUNDED_RECTANGLE, 32, 936, 746, 58, th["primary"], name="Follow strip", adj=0.2)
+    if os.path.isfile(os.path.join(CAROUSEL_ASSETS_DIR, "share_icon.png")):
+        cv.image("share_icon", 46, 942, 44, 46)
+    else:
+        cv.text(48, 950, 42, "↗", 25, color="white", bold=True, scaled=False, name="Share icon")
+    if lang == "te":
+        follow = (edit.get("te") or {}).get("follow") or TE_LABELS[DECK_FOLLOW_DEFAULT]
+    else:
+        follow = edit.get("follow") or DECK_FOLLOW_DEFAULT
+    fs = 17
+    for fs in (17, 15, 13):
+        if _text_height(follow, fs, 650, cv.kind_for("body"), False, 1.0) <= 46:
+            break
+    cv.text(104, 940, 650, follow, fs, role="body", color="FFFFFF", scaled=False, h=50, anchor="middle",
+            name="Follow line")
     names = []
     for it in items:
         for l in it["links"]:
@@ -7009,32 +7288,43 @@ def _slide_one(cv, edit):
     if names:
         prefix = te_label("SOURCES:") if lang == "te" else "Sources:"
         more = f" +{len(names) - 8}" if len(names) > 8 else ""
-        cv.text(36, 1012, 740, prefix + " " + ", ".join(names[:8]) + more, 15, role="brand", color="475569", bold=True,
+        cv.text(36, 1006, 740, prefix + " " + ", ".join(names[:8]) + more, 15, role="brand", color="475569", bold=True,
                 scaled=False, h=44, name="Sources")
     _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, 1068, DECK_W, 12, th["primary"], name="Closing bar")
-    return 1000 - (y - gap)
+    return ONE_SLIDER_BOTTOM - (y - gap)
+
+
+def _one_fit(edit: dict, lang: str):
+    """(text scale, compact?) at which every ticked headline fits the slide, or None if even the smallest doesn't."""
+    for compact in ((True, False) if edit.get("layout") == "compact" else (False, True)):
+        for k in ONE_SLIDER_SCALES:
+            cv = _DeckCanvas(None, lang, {}, k)
+            cv.compact = compact
+            if _slide_one(cv, edit) >= 0:
+                return k, compact
+    return None
 
 
 def build_one_slider_pptx(edit: dict, lang: str = "en") -> bytes:
     """The approved one-slide headlines as an editable PowerPoint slide (CamPen style)."""
     if Presentation is None:
         raise RuntimeError("python-pptx isn't installed. Run:  pip install python-pptx")
-    if not os.path.isdir(CAROUSEL_ASSETS_DIR):
-        raise RuntimeError(f"The carousel_assets folder is missing (expected at {CAROUSEL_ASSETS_DIR}).")
     errs = one_slider_problems(edit, lang)
     if errs:
         raise ValueError("Not ready:\n- " + "\n- ".join(errs))
     if lang == "te" and not (edit.get("te") or {}).get("chip"):
         edit.setdefault("te", {})["chip"] = ONE_SLIDER_TOPICS[edit["topic"]]["te_chip"]
-    k = DECK_SCALES[-1]
-    for k in (1.5, 1.4, 1.3, 1.2, 1.1) + DECK_SCALES:   # fewer headlines are shown larger -- never a half-empty slide
-        if _slide_one(_DeckCanvas(None, lang, {}, k), edit) >= 0:
-            break
+    fit = _one_fit(edit, lang)          # fewer headlines are shown larger -- never a half-empty slide
+    if fit is None:
+        raise ValueError("Too much text for one slide -- shorten the headlines or untick one.")
+    k, compact = fit
     prs = Presentation()
     prs.slide_width, prs.slide_height = Pt(DECK_W), Pt(DECK_H)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _slide_one(_DeckCanvas(slide, lang, {}, k), edit)
-    slide.notes_slide.notes_text_frame.text = "Sources:\n" + "\n".join(
+    cv = _DeckCanvas(slide, lang, {}, k)
+    cv.compact = compact
+    _slide_one(cv, edit)
+    slide.notes_slide.notes_text_frame.text = "Post caption:\n" + one_slider_caption_text(edit, lang) + "\n\nSources:\n" + "\n".join(
         f"{i['text']}\n  " + "\n  ".join(f"{l['name']}: {l['url']}" for l in i["links"])
         for i in edit["items"] if i["include"])
     cp = prs.core_properties
