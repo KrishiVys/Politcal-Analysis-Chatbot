@@ -84,7 +84,7 @@ if _app_password and not st.session_state.get("auth_ok"):
 # updatedcode.py is in the folder (or an old copy is still loaded in a running
 # app), stop with clear instructions instead of failing mid-search.
 if (not hasattr(uc, "resolve_subject") or not hasattr(uc, "build_top_stories") or not hasattr(uc, "gather_daily_wrap")
-        or not hasattr(uc, "gather_daily_carousel")):
+        or not hasattr(uc, "gather_daily_carousel") or not hasattr(uc, "generate_one_slider_caption")):
     st.error(
         "**Version mismatch:** this app.py is newer than the updatedcode.py it found at:\n\n"
         f"`{getattr(uc, '__file__', 'unknown location')}`\n\n"
@@ -497,7 +497,7 @@ def render_carousel(c: dict, key_prefix: str) -> None:
             "ID": e["id"], "Headline": e["headline"], "Category": e["category"], "Outlets": e["outlets"],
             "Established": e["established"], "First published": e["published"], "Outcome": e["outcome"],
             "Main source": e["sources"][0]["url"] if e["sources"] else ""} for e in c["source_log"]]),
-            use_container_width=True, hide_index=True)
+            width="stretch", hide_index=True)
     with tabs[4]:
         render_editorial_review(c, key_prefix)
     with tabs[5]:
@@ -991,7 +991,7 @@ def render_regional(msg: dict, key_prefix: str) -> None:
             for col, x in zip(cols, segs[i:i + 6]):
                 col.button(f"{x['name']} · {x['ac_no']}", key=f"{key_prefix}_seg_{x['state'][:2]}{x['ac_no']}",
                            on_click=_reg_pick, args=(f"ac:{sd.STATE_SHORT[x['state']]}:{x['ac_no']}", period),
-                           use_container_width=True)
+                           width="stretch")
     items = sd.items_of(result)
     left, right = st.columns([1.5, 1])
     with right:
@@ -1054,9 +1054,13 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if ek not in st.session_state:
         st.session_state[ek] = _copy.deepcopy(msg["one"])
     edit = st.session_state[ek]
+    if st.session_state.pop(f"{kp}_one_reset_checked", False):
+        st.session_state[f"{kp}_one_checked"] = False
+    if not edit.get("caption") and any(i.get("include") for i in edit["items"]):
+        edit["caption"] = uc.generate_one_slider_caption(edit)
     st.markdown(f"**📰 {edit['label']} — one-slide headlines · {edit['day']}**")
     if not edit["items"]:
-        st.info("No verified headlines found for this topic and day. Try another day or topic.")
+        st.info("No qualifying headlines found for this topic and day. Try another day or topic.")
         with st.expander("🔎 Sources checked"):
             for k, v in edit["status"].items():
                 st.markdown(f"- **{k}:** {v}")
@@ -1064,6 +1068,15 @@ def render_one_slider(msg: dict, kp: str) -> None:
     st.caption(("Headlines shortened by Sarvam AI" if edit["used_ai"] else "The outlets' own headlines (AI not available)")
                + " · ranked by how many outlets carried each story · edit, untick, approve, then download the slide.")
     with st.form(f"{kp}_one_form"):
+        with st.expander("Template settings"):
+            st.selectbox("Colour theme", list(uc.ONE_SLIDER_THEMES),
+                         index=list(uc.ONE_SLIDER_THEMES).index(edit.get("theme", edit["topic"])),
+                         format_func=uc.ONE_SLIDER_THEME_NAMES.get, key=f"{kp}_one_theme")
+            st.selectbox("Layout", ["editorial", "compact"], index=1 if edit.get("layout")=="compact" else 0,
+                         format_func=lambda x: "Compact header" if x=="compact" else "Editorial header", key=f"{kp}_one_layout")
+            st.checkbox("Highlight lead headline", edit.get("highlight_lead", True), key=f"{kp}_one_lead")
+            st.checkbox("Show outlet counts", edit.get("show_counts", True), key=f"{kp}_one_counts")
+            st.text_input("Follow line", edit.get("follow") or uc.DECK_FOLLOW_DEFAULT, key=f"{kp}_one_follow")
         st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
         for it in edit["items"]:
             c1, c2 = st.columns([1, 11])
@@ -1077,6 +1090,15 @@ def render_one_slider(msg: dict, kp: str) -> None:
         saved = st.form_submit_button("💾 Save")
     if saved:
         ss = st.session_state
+        previous_signature = uc.one_slider_signature(edit)
+        edit["theme"] = ss[f"{kp}_one_theme"]
+        edit["layout"] = ss[f"{kp}_one_layout"]
+        edit["highlight_lead"] = ss[f"{kp}_one_lead"]
+        edit["show_counts"] = ss[f"{kp}_one_counts"]
+        follow = ss[f"{kp}_one_follow"].strip() or uc.DECK_FOLLOW_DEFAULT
+        if follow != edit.get("follow"):
+            edit.setdefault("te", {}).pop("follow", None)
+        edit["follow"] = follow
         edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
         for it in edit["items"]:
             it["include"] = bool(ss.get(f"{kp}_one_inc_{it['id']}", it["include"]))
@@ -1087,9 +1109,84 @@ def render_one_slider(msg: dict, kp: str) -> None:
             it["text"] = new
         edit["checked"] = bool(ss.get(f"{kp}_one_checked", edit["checked"]))
         edit["approver"] = ss.get(f"{kp}_one_approver", edit["approver"]).strip()
+        if previous_signature != uc.one_slider_signature(edit):
+            edit["checked"] = False
+            ss[f"{kp}_one_reset_checked"] = True
         for k in (f"{kp}_one_en", f"{kp}_one_te"):
             ss.pop(k, None)
         st.success("Saved.")
+    st.markdown("**Post caption**")
+    st.caption("Captions use the saved, selected headlines. Save headline changes before regenerating.")
+    style = st.selectbox("Caption style", list(uc.ONE_SLIDER_CAPTION_STYLES),
+                         format_func=uc.ONE_SLIDER_CAPTION_STYLES.get, key=f"{kp}_caption_style")
+    def _generate_caption():
+        try:
+            edit["caption"] = uc.generate_one_slider_caption(edit, st.session_state[f"{kp}_caption_style"])
+            st.session_state[f"{kp}_caption_en"] = edit["caption"]["text"]
+            st.session_state[f"{kp}_caption_te"] = ""
+            st.session_state.pop(f"{kp}_caption_error", None)
+        except ValueError as exc:
+            st.session_state[f"{kp}_caption_error"] = str(exc)
+    st.button("✍️ Generate / refresh post caption", key=f"{kp}_caption_generate", on_click=_generate_caption)
+    if st.session_state.get(f"{kp}_caption_error"):
+        st.warning(st.session_state[f"{kp}_caption_error"])
+    current_caption = uc.one_slider_caption_text(edit)
+    if edit.get("caption") and not current_caption:
+        st.warning("The caption is empty or the selected headlines changed. Generate a fresh caption.")
+    if current_caption:
+        st.session_state.setdefault(f"{kp}_caption_en", current_caption)
+        with st.form(f"{kp}_caption_form"):
+            st.text_area("English post caption", height=220, key=f"{kp}_caption_en")
+            if st.form_submit_button("Save caption"):
+                edit["caption"]["text"] = st.session_state[f"{kp}_caption_en"].strip()
+                edit["caption"]["te"] = ""
+                st.session_state.pop(f"{kp}_caption_te", None)
+                for key in (f"{kp}_one_en", f"{kp}_one_te"):
+                    st.session_state.pop(key, None)
+        st.code(uc.one_slider_caption_text(edit), language=None)
+        st.download_button("⬇️ English post caption (.txt)", uc.one_slider_caption_text(edit),
+                           file_name=f"CamPen_{edit['topic']}_{edit['day']}_caption_EN.txt", key=f"{kp}_caption_dl")
+        def _translate_caption():
+            translated, problems = uc.translate_texts_te(client, [uc.one_slider_caption_text(edit)])
+            edit["caption"]["te"] = translated[0] if translated else ""
+            st.session_state[f"{kp}_caption_te"] = edit["caption"]["te"]
+            st.session_state[f"{kp}_caption_te_problems"] = problems
+            st.session_state.pop(f"{kp}_one_te", None)
+        st.button("Translate caption to Telugu", key=f"{kp}_caption_translate", disabled=client is None,
+                  on_click=_translate_caption)
+        show_translation_problems(st.session_state.get(f"{kp}_caption_te_problems", []))
+        st.session_state.setdefault(f"{kp}_caption_te", edit["caption"].get("te", ""))
+        with st.form(f"{kp}_caption_te_form"):
+            st.text_area("Telugu post caption", height=180, key=f"{kp}_caption_te")
+            if st.form_submit_button("Save Telugu caption"):
+                edit["caption"]["te"] = st.session_state[f"{kp}_caption_te"].strip()
+                st.session_state.pop(f"{kp}_one_te", None)
+        if uc.one_slider_caption_text(edit, "te"):
+            st.code(uc.one_slider_caption_text(edit, "te"), language=None)
+            st.download_button("⬇️ Telugu post caption (.txt)", uc.one_slider_caption_text(edit, "te"),
+                               file_name=f"CamPen_{edit['topic']}_{edit['day']}_caption_TE.txt", key=f"{kp}_caption_dl_te")
+
+    with st.expander("🔎 Recheck selected source links", expanded=False):
+        st.caption("Checks publisher links and headline overlap. Blocked or mismatched pages need manual review; this does not verify facts.")
+        if st.button("Recheck sources now", key=f"{kp}_sources_recheck"):
+            with st.spinner("Rechecking selected article links…"):
+                edit["source_audit"] = uc.recheck_one_slider_sources(edit)
+        audit = edit.get("source_audit") or {}
+        if audit:
+            if audit.get("signature") != uc.one_slider_signature(edit):
+                st.warning("Headlines or selection changed since the last recheck. Recheck again.")
+            else:
+                st.caption("Checked " + audit["checked_at"])
+                for index, result in enumerate(audit["results"]):
+                    with st.container(border=True):
+                        st.text(f"{result['name']} · {result['status']}")
+                        st.caption(result["detail"])
+                        article_url = result.get("resolved_url") or result["url"]
+                        if uc._source_url_ok(article_url):
+                            st.link_button("Open source article", article_url)
+        st.download_button("⬇️ Selected sources page (.html)", uc.one_slider_sources_html(edit),
+                           file_name=f"CamPen_{edit['topic']}_{edit['day']}_sources.html", mime="text/html", key=f"{kp}_sources_dl")
+
     errs = uc.one_slider_problems(edit)
     if errs:
         st.error("**Before building the slide:**\n" + "\n".join(f"- {e}" for e in errs))
@@ -1259,7 +1356,7 @@ with st.sidebar:
     except ValueError as e:
         wrap_range_error = str(e)
         st.error(wrap_range_error)
-    if st.button("🗞️ Generate wrap-up", use_container_width=True, key="wrap_btn", disabled=bool(wrap_range_error)):
+    if st.button("🗞️ Generate wrap-up", width="stretch", key="wrap_btn", disabled=bool(wrap_range_error)):
         who = f"{wrap_party} " if wrap_party else ""
         st.session_state.trigger_prompt = (f"{who}Daily wrap-up: {wrap_label}" if wrap_start == wrap_end else
                                            f"{who}News wrap-up: {wrap_label}, {uc.wrap_period_text(wrap_start, wrap_end)}")
@@ -1281,7 +1378,7 @@ with st.sidebar:
                                format_func=lambda k: _reg_labels.get(k, k),
                                placeholder="Constituency (name or no.), district, region, party, leader…")
         reg_period = st.radio("Period", REG_PERIODS, horizontal=True, key="opt_reg_period")
-        if st.button("🗳️ Show political news", use_container_width=True, key="regional_btn", disabled=not reg_key):
+        if st.button("🗳️ Show political news", width="stretch", key="regional_btn", disabled=not reg_key):
             _reg_pick(reg_key, reg_period)
             st.rerun()
         st.caption("Political news only -- parties, leaders, elected representatives, elections -- tagged with "
@@ -1293,7 +1390,7 @@ with st.sidebar:
     _one_keys = list(uc.ONE_SLIDER_TOPICS)
     one_topic = st.selectbox("Topic", _one_keys, format_func=lambda k: uc.ONE_SLIDER_TOPICS[k]["label"], key="opt_one_topic")
     one_day = st.date_input("Day (IST)", value=uc.ist_today(), max_value=uc.ist_today(), key="opt_one_day")
-    if st.button("📰 Make the one-slide headlines", use_container_width=True, key="one_btn"):
+    if st.button("📰 Make the one-slide headlines", width="stretch", key="one_btn"):
         st.session_state.trigger_one = (one_topic, one_day)
         st.session_state.trigger_prompt = f"One-slide headlines: {uc.ONE_SLIDER_TOPICS[one_topic]['label']} ({one_day:%d %b %Y})"
         st.rerun()
@@ -1307,7 +1404,7 @@ with st.sidebar:
                                          "covers national politics, world affairs, business, tech/science, health, "
                                          "environment and sports.")
     car_day = st.date_input("Day", value=uc.ist_today(), max_value=uc.ist_today(), key="opt_car_day")
-    if st.button("🎠 Generate draft carousel", use_container_width=True, key="carousel_btn"):
+    if st.button("🎠 Generate draft carousel", width="stretch", key="carousel_btn"):
         st.session_state.trigger_prompt = f"Daily news carousel, {car_day:%d %b %Y}"
         st.session_state.trigger_carousel = (car_day, CAROUSEL_STATE_CHOICES[car_states_label])
         st.rerun()
@@ -1367,7 +1464,7 @@ with st.sidebar:
         st.divider()
         st.subheader("🕘 Recent searches")
         for i, q in enumerate(st.session_state.recent_queries):
-            if st.button(q, key=f"recent_q_{i}", use_container_width=True):
+            if st.button(q, key=f"recent_q_{i}", width="stretch"):
                 st.session_state.trigger_prompt = q
                 st.rerun()
 
@@ -1404,7 +1501,7 @@ with st.sidebar:
                 st.download_button(fname, f.read(), file_name=fname, key=f"saved_{fname}")
 
     st.divider()
-    if st.button("🗑️ Clear chat", use_container_width=True):
+    if st.button("🗑️ Clear chat", width="stretch"):
         st.session_state.messages = []
         st.rerun()
 
@@ -1594,7 +1691,7 @@ if not st.session_state.messages:
         st.caption(row_label)
         cols = st.columns(len(examples))
         for col, example_name in zip(cols, examples):
-            if col.button(example_name, key=f"example_{example_name}", use_container_width=True):
+            if col.button(example_name, key=f"example_{example_name}", width="stretch"):
                 st.session_state.trigger_prompt = example_name
                 st.rerun()
 
