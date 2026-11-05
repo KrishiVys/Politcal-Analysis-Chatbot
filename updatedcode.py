@@ -6739,11 +6739,10 @@ def carousel_sources_html(final: dict, lang: str = "en") -> str:
 # Six separate topics. Hyderabad, AP and Telangana keep only stories about
 # POLITICAL PERSONALITIES and POLICY (parties, leaders, ministers, cabinet,
 # schemes, bills, GOs, budgets); Sports, National and Business/Tech take the
-# day's biggest stories in that area. Stories are ranked by how many outlets
-# carried them (established outlets first), unverifiable single-source claims
-# are left out, no event appears twice, and the AI only shortens each headline
-# (with the outlets' own headline as the fallback). The editor reviews,
-# approves and downloads one editable slide in the CamPen style.
+# retrieved stories in that area. Source-linked stories are ordered by outlet
+# coverage, with single-source reports labelled for review. Published headlines
+# are preserved, duplicates grouped, and no candidates are selected by default.
+# The editor chooses up to six, reviews, approves and downloads the slide.
 
 ONE_SLIDER_TOPICS = {
     "hyderabad": {"label": "Hyderabad News", "chip": "HYDERABAD", "te_chip": "హైదరాబాద్", "political": True,
@@ -6833,17 +6832,34 @@ def detect_one_slider_request(text: str):
     return None
 
 
+def one_slider_request_day(text: str, default=None):
+    """Resolve an explicit ISO date, yesterday or today for a typed daily request."""
+    today = ist_today()
+    match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", text or "")
+    if match:
+        try:
+            day = datetime.strptime(match.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("Use a valid date in YYYY-MM-DD format.") from None
+    elif re.search(r"\byesterday\b", text or "", re.I):
+        day = today - timedelta(days=1)
+    elif re.search(r"\btoday\b", text or "", re.I):
+        day = today
+    else:
+        day = default or today
+    validate_wrap_range(day, day)
+    return day
+
+
 def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MODEL) -> dict:
-    """The day's major headlines for one topic, ready for review and the one-slide PowerPoint."""
+    """Retrieved, source-linked news candidates; the editor selects the final slide."""
     from concurrent.futures import ThreadPoolExecutor
     cfg = ONE_SLIDER_TOPICS[topic]
     day = day or ist_today()
     validate_wrap_range(day, day)
     start, end = ist_day_window(day)
-    if day == ist_today():                    # today: all of today AND the last 24 hours (mornings aren't empty)
-        now = utc_now()
-        start, end = min(start, now - timedelta(hours=24)), max(end, now)
-    window = f"after:{(day - timedelta(days=2)):%Y-%m-%d} before:{(day + timedelta(days=1)):%Y-%m-%d}"
+    # Daily means the selected IST calendar day, never yesterday's stories as filler.
+    window = f"after:{(day - timedelta(days=1)):%Y-%m-%d} before:{(day + timedelta(days=1)):%Y-%m-%d}"
     status = {}
 
     def google(q):
@@ -6874,55 +6890,51 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
             dropped["not about Hyderabad"] += 1
         else:
             keep.append(a)
-    stories = build_top_stories({"headlines": keep, "social_news": []}, max_stories=40, window_days=1)
+    stories = build_top_stories({"headlines": keep, "social_news": []}, max_stories=max(1, len(keep)), window_days=1)
     ranked = []
     for s in stories:
         s["links"] = _story_link_records(s)
         s["outlets"] = [r["name"] for r in s["links"]]
         s["n_established"] = sum(1 for r in s["links"] if r["kind"] in ("established", "primary"))
-        if s["n_established"] == 0 and len(s["outlets"]) < 2:
-            dropped["single source, not an established outlet (can't be verified)"] += 1
+        s["links"] = [link for link in s["links"] if _source_url_ok(link.get("url", ""))]
+        if not s["links"]:
+            dropped["no usable public article link"] += 1
             continue
+        s["outlets"] = [link["name"] for link in s["links"]]
+        s["n_established"] = sum(link["kind"] in ("established", "primary") for link in s["links"])
         if any(_same_event(r, s) for r in ranked):
             dropped["same event as a story already listed"] += 1
             continue
         ranked.append(s)
     ranked.sort(key=lambda s: (s["n_established"] > 0, len(s["outlets"]),
                                s["last_seen"].timestamp() if s.get("last_seen") else 0), reverse=True)
-    top = ranked[:ONE_SLIDER_MAX]
-    for i, s in enumerate(top, 1):
-        s["cid"] = f"H{i}"
-    written, used_ai = {}, False
-    if client is not None and top:
-        system = ("You are the editor of a daily news briefing in India. For each story id, write ONE concise, accurate, "
-                  "neutral headline of at most 12 words, using ONLY the outlets' headlines given. No sensationalism, no "
-                  "question headlines; attribute allegations and claims to whoever made them. Respond with ONLY a JSON "
-                  'object: {"headlines": {"H1": "..."}}')
-        user = "\n".join(f"[{s['cid']}] " + "; ".join(f'"{it["headline"]}" ({it.get("source", "")})' for it in s["items"][:4])
-                         for s in top)
-        try:
-            got = _carousel_ai_json(client, model, system, user, "headlines", 900 + 120 * len(top))
-            written = {k: str(v) for k, v in (got.get("headlines") or {}).items() if isinstance(v, (str, int, float))}
-            used_ai = bool(written)
-        except Exception as e:
-            status["AI headlines"] = f"not available ({_short_error(e)}) -- the outlets' own headlines are used"
+    # Return the retrieved candidate pool; the editor makes the final selection.
+    top = ranked
+    for i, story in enumerate(top, 1):
+        story["cid"] = f"H{i}"
+    used_ai = False
     items = []
     for s in top:
-        best = min((it for it in s["items"] if outlet_kind(it.get("source", "")) != "other") or s["items"],
+        available = [it for it in s["items"] if _source_url_ok(it.get("url", ""))]
+        best = min([it for it in available if outlet_kind(it.get("source", ""), it.get("url", "")) != "other"] or available,
                    key=lambda it: len(it.get("headline", "")))
-        original = _clean_headline(best.get("headline", ""), best.get("source", "")).rstrip(".")
-        ai = " ".join(written.get(s["cid"], "").split()).strip().strip('"').rstrip(".")
-        text = ai if ai and len(ai.split()) <= 14 else original
+        original = _clean_headline(best.get("headline", ""), best.get("source", ""))
+        text = original  # Only a published headline; editing is an explicit editorial action.
         items.append({"id": s["cid"], "text": text, "original": original, "outlets": s["outlets"],
                       "links": [{"name": r["name"], "url": r["url"]} for r in s["links"][:6]],
-                      "n_established": s["n_established"], "include": True, "te": {}, "tag": suggest_tag(original),
-                      "verification": f"Carried by {len(s['outlets'])} outlet(s), {s['n_established']} established"})
-    status["Headlines"] = (f"{len(items)} chosen from {len(ranked)} source-qualified stories (pending editorial checks)"
+                      "n_established": s["n_established"], "include": False, "te": {}, "tag": suggest_tag(original),
+                      "published": _first_published(s),
+                      "verification": (f"Listed by {len(s['outlets'])} outlet(s), {s['n_established']} established; "
+                                       + ("single-source report — review before use" if len(s["outlets"]) == 1 else
+                                          "multiple outlet listings — review before use"))})
+    status["Headlines"] = (f"{len(items)} retrieved news candidates; none selected automatically (pending editorial checks)"
                            + (f"; left out: " + ", ".join(f"{n} {why}" for why, n in dropped.items()) if dropped else ""))
     return {"topic": topic, "label": cfg["label"], "chip": cfg["chip"], "day": day.isoformat(), "items": items,
             "title": ONE_SLIDER_TITLE["en"], "te": {}, "status": status, "used_ai": used_ai,
             "approver": "", "checked": False, "theme": topic, "show_counts": True, "follow": DECK_FOLLOW_DEFAULT,
-            "sources_url": ""}
+            "sources_url": "", "selection_mode": "manual",
+            "fetched_at": f"{utc_now() + IST_OFFSET:%d %b %Y, %H:%M} IST",
+            "coverage_window": f"{start + IST_OFFSET:%d %b %Y, %H:%M} – {end + IST_OFFSET:%d %b %Y, %H:%M} IST"}
 
 
 ONE_SLIDER_CAPTION_STYLES = {"concise": "Concise", "detailed": "Detailed"}
