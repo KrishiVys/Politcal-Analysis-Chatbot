@@ -1065,8 +1065,14 @@ def render_one_slider(msg: dict, kp: str) -> None:
             for k, v in edit["status"].items():
                 st.markdown(f"- **{k}:** {v}")
         return
-    st.caption(("Headlines shortened by Sarvam AI" if edit["used_ai"] else "The outlets' own headlines (AI not available)")
-               + " · ranked by how many outlets carried each story · edit, untick, approve, then download the slide.")
+    selected = sum(bool(item.get("include")) for item in edit["items"])
+    st.caption(f"{len(edit['items'])} retrieved news candidates · {selected} selected · choose up to {uc.ONE_SLIDER_MAX} for the slide.")
+    st.caption("Publisher headlines are shown without AI rewriting. Tick the news you want, then save your selection. "
+               "Source links are provided for review; a news listing is not independent verification.")
+    if edit.get("coverage_window"):
+        st.caption("News window: " + edit["coverage_window"])
+    if edit.get("fetched_at"):
+        st.caption("News fetched: " + edit["fetched_at"])
     with st.form(f"{kp}_one_form"):
         with st.expander("Template settings"):
             st.selectbox("Colour theme", list(uc.ONE_SLIDER_THEMES),
@@ -1083,6 +1089,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
             c1.checkbox("Use", it["include"], key=f"{kp}_one_inc_{it['id']}")
             c2.text_input(f"Headline {it['id']}", it["text"], key=f"{kp}_one_txt_{it['id']}",
                           label_visibility="collapsed")
+            if it.get("published"):
+                c2.caption("Published: " + it["published"])
             c2.caption(f"{it['verification']} · " + " · ".join(f"[{l['name']}]({l['url']})" for l in it["links"][:4])
                        + (f" · outlet headline: “{it['original']}”" if it["original"] != it["text"] else ""))
         st.checkbox("I checked these headlines against the linked sources", edit["checked"], key=f"{kp}_one_checked")
@@ -1389,13 +1397,19 @@ with st.sidebar:
     st.subheader("📰 One-slide headlines")
     _one_keys = list(uc.ONE_SLIDER_TOPICS)
     one_topic = st.selectbox("Topic", _one_keys, format_func=lambda k: uc.ONE_SLIDER_TOPICS[k]["label"], key="opt_one_topic")
+    today = uc.ist_today()
+    previous_today = st.session_state.get("one_today_marker")
+    if previous_today and previous_today != today and st.session_state.get("opt_one_day") == previous_today:
+        st.session_state.opt_one_day = today
+    st.session_state.one_today_marker = today
     one_day = st.date_input("Day (IST)", value=uc.ist_today(), max_value=uc.ist_today(), key="opt_one_day")
     if st.button("📰 Make the one-slide headlines", width="stretch", key="one_btn"):
         st.session_state.trigger_one = (one_topic, one_day)
         st.session_state.trigger_prompt = f"One-slide headlines: {uc.ONE_SLIDER_TOPICS[one_topic]['label']} ({one_day:%d %b %Y})"
         st.rerun()
-    st.caption("The day's major headlines on one editable slide. Hyderabad, AP and Telangana: political personalities "
-               "and policy only. Or type e.g. \"Telangana headlines\", \"sports one slider\".")
+    st.caption("Fetch available news, then choose which headlines go on one editable slide. Hyderabad, AP and Telangana: political personalities "
+               "and policy only. Each request searches afresh for the selected IST day. "
+               "Or type e.g. \"Telangana headlines today\", \"sports one slider yesterday\".")
 
     st.divider()
     st.subheader("🎠 Daily news carousel (draft)")
@@ -1570,30 +1584,23 @@ def run_carousel_turn(query: str, day, states: str, key_prefix: str) -> None:
 
 
 def run_one_slider_turn(topic: str, day, key_prefix: str) -> None:
-    cache_key = ("oneslider", topic, str(day))
-    force_fresh = st.session_state.force_fresh
+    """A new request always fetches current source results; UI reruns reuse the saved review."""
     st.session_state.force_fresh = False
-    cached = st.session_state.result_cache.get(cache_key)
-    if use_cache and not force_fresh and cached and (time.time() - cached[0]) / 60 < CACHE_TTL_MINUTES:
-        msg = {"role": "assistant", "kind": "oneslider", "one": cached[1]}
-    else:
-        placeholder = st.empty()
-        log = ProgressLog(placeholder)
-        try:
-            with contextlib.redirect_stdout(log):
-                one = uc.gather_one_slider(topic, day, client)
-            placeholder.empty()
-        except Exception as e:
-            placeholder.empty()
-            text = f"Couldn't make the one-slide headlines: {e}"
-            st.error(text)
-            st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
-            return
-        st.session_state.result_cache[cache_key] = (time.time(), one, False)
-        msg = {"role": "assistant", "kind": "oneslider", "one": one}
+    placeholder = st.empty()
+    log = ProgressLog(placeholder)
+    try:
+        with contextlib.redirect_stdout(log):
+            one = uc.gather_one_slider(topic, day, client)
+        placeholder.empty()
+    except Exception as e:
+        placeholder.empty()
+        text = f"Couldn't fetch news for the selected day: {e}"
+        st.error(text)
+        st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
+        return
+    msg = {"role": "assistant", "kind": "oneslider", "one": one}
     render_assistant_message(msg, key_prefix)
     st.session_state.messages.append(msg)
-
 
 def run_regional_turn(query: str, key: str, period: str, key_prefix: str) -> None:
     """One chat turn: political news for a constituency / Lok Sabha seat / district / region / party / leader."""
@@ -1722,12 +1729,17 @@ if prompt:
     key_prefix = f"msg{len(st.session_state.messages)}"  # index this reply will have in history
     wrap_choice = uc.detect_wrap_request(prompt, default=WRAP_CHOICES[wrap_label])
     with st.chat_message("assistant", avatar="🏛️"):
+        _one_date_error = ""
         one = st.session_state.trigger_one
         st.session_state.trigger_one = None
         if one is None and not st.session_state.trigger_carousel and not st.session_state.trigger_wrap_range \
                 and not st.session_state.trigger_regional:
             _t = uc.detect_one_slider_request(prompt)
-            one = (_t, uc.ist_today()) if _t else None
+            if _t:
+                try:
+                    one = (_t, uc.one_slider_request_day(prompt))
+                except ValueError as exc:
+                    _one_date_error = str(exc)
         reg = st.session_state.trigger_regional
         st.session_state.trigger_regional = None
         if one:
@@ -1739,7 +1751,9 @@ if prompt:
                 reg = found
             elif found:
                 reg = (found, sd.detect_period(prompt) or reg_period)
-        if one:
+        if _one_date_error:
+            st.error(_one_date_error)
+        elif one:
             run_one_slider_turn(one[0], one[1], key_prefix)
         elif reg and reg[0] == "ask-state":
             text = (f"Constituency number {reg[1]} exists in both Andhra Pradesh and Telangana -- which one? "
