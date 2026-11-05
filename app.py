@@ -84,7 +84,7 @@ if _app_password and not st.session_state.get("auth_ok"):
 # updatedcode.py is in the folder (or an old copy is still loaded in a running
 # app), stop with clear instructions instead of failing mid-search.
 if (not hasattr(uc, "resolve_subject") or not hasattr(uc, "build_top_stories") or not hasattr(uc, "gather_daily_wrap")
-        or not hasattr(uc, "gather_daily_carousel") or not hasattr(uc, "generate_one_slider_caption")):
+        or not hasattr(uc, "gather_daily_carousel") or not hasattr(uc, "build_one_slider_png")):
     st.error(
         "**Version mismatch:** this app.py is newer than the updatedcode.py it found at:\n\n"
         f"`{getattr(uc, '__file__', 'unknown location')}`\n\n"
@@ -1074,15 +1074,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if edit.get("fetched_at"):
         st.caption("News fetched: " + edit["fetched_at"])
     with st.form(f"{kp}_one_form"):
-        with st.expander("Template settings"):
-            st.selectbox("Colour theme", list(uc.ONE_SLIDER_THEMES),
-                         index=list(uc.ONE_SLIDER_THEMES).index(edit.get("theme", edit["topic"])),
-                         format_func=uc.ONE_SLIDER_THEME_NAMES.get, key=f"{kp}_one_theme")
-            st.selectbox("Layout", ["editorial", "compact"], index=1 if edit.get("layout")=="compact" else 0,
-                         format_func=lambda x: "Compact header" if x=="compact" else "Editorial header", key=f"{kp}_one_layout")
-            st.checkbox("Highlight lead headline", edit.get("highlight_lead", True), key=f"{kp}_one_lead")
-            st.checkbox("Show outlet counts", edit.get("show_counts", True), key=f"{kp}_one_counts")
-            st.text_input("Follow line", edit.get("follow") or uc.DECK_FOLLOW_DEFAULT, key=f"{kp}_one_follow")
+        st.caption("The attached Instagram template is matched automatically to this topic.")
         st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
         for it in edit["items"]:
             c1, c2 = st.columns([1, 11])
@@ -1099,14 +1091,6 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if saved:
         ss = st.session_state
         previous_signature = uc.one_slider_signature(edit)
-        edit["theme"] = ss[f"{kp}_one_theme"]
-        edit["layout"] = ss[f"{kp}_one_layout"]
-        edit["highlight_lead"] = ss[f"{kp}_one_lead"]
-        edit["show_counts"] = ss[f"{kp}_one_counts"]
-        follow = ss[f"{kp}_one_follow"].strip() or uc.DECK_FOLLOW_DEFAULT
-        if follow != edit.get("follow"):
-            edit.setdefault("te", {}).pop("follow", None)
-        edit["follow"] = follow
         edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
         for it in edit["items"]:
             it["include"] = bool(ss.get(f"{kp}_one_inc_{it['id']}", it["include"]))
@@ -1200,13 +1184,19 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.error("**Before building the slide:**\n" + "\n".join(f"- {e}" for e in errs))
     if st.button("✅ Approve & build the slide (English)", key=f"{kp}_one_build_en", disabled=bool(errs)):
         try:
+            st.session_state.pop(f"{kp}_one_png_en", None)
             st.session_state[f"{kp}_one_en"] = uc.build_one_slider_pptx(edit, "en")
+            st.session_state[f"{kp}_one_png_en"] = uc.build_one_slider_png(edit, "en")
         except Exception as e:
             st.error(f"Couldn't build the slide: {e}")
     if f"{kp}_one_en" in st.session_state:
         st.download_button("⬇️ Download the slide (PowerPoint, editable)", st.session_state[f"{kp}_one_en"],
                            file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_EN.pptx", key=f"{kp}_one_dl_en",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+    if f"{kp}_one_png_en" in st.session_state and f"{kp}_one_en" in st.session_state:
+        st.image(st.session_state[f"{kp}_one_png_en"], width=420)
+        st.download_button("⬇️ Download Instagram image (PNG)", st.session_state[f"{kp}_one_png_en"],
+                           file_name=f"CamPen_{edit['topic']}_{edit['day']}_EN.png", mime="image/png", key=f"{kp}_one_png_dl_en")
     st.markdown("**Telugu slide**")
     def _translate_one():
         # Runs BEFORE the page is drawn, so the Telugu boxes can be filled with the new text (Streamlit ignores
@@ -1241,12 +1231,21 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if st.button("✅ Approve & build the slide (Telugu)", key=f"{kp}_one_build_te", disabled=bool(te_errs)):
         try:
             st.session_state[f"{kp}_one_te"] = uc.build_one_slider_pptx(edit, "te")
+            st.session_state.pop(f"{kp}_one_png_te", None)
+            try:
+                st.session_state[f"{kp}_one_png_te"] = uc.build_one_slider_png(edit, "te")
+            except RuntimeError as image_error:
+                st.info(str(image_error))
         except Exception as e:
             st.error(f"Couldn't build the Telugu slide: {e}")
     if f"{kp}_one_te" in st.session_state:
         st.download_button("⬇️ Download the Telugu slide (PowerPoint, editable)", st.session_state[f"{kp}_one_te"],
                            file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_TE.pptx", key=f"{kp}_one_dl_te",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+    if f"{kp}_one_png_te" in st.session_state and f"{kp}_one_te" in st.session_state:
+        st.image(st.session_state[f"{kp}_one_png_te"], width=420)
+        st.download_button("⬇️ Download Telugu Instagram image (PNG)", st.session_state[f"{kp}_one_png_te"],
+                           file_name=f"CamPen_{edit['topic']}_{edit['day']}_TE.png", mime="image/png", key=f"{kp}_one_png_dl_te")
     with st.expander("🔎 Sources checked"):
         for k, v in edit["status"].items():
             st.markdown(f"- **{k}:** {v}")
