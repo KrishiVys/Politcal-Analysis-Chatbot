@@ -6760,9 +6760,10 @@ ONE_SLIDER_TOPICS = {
                   "queries": ['Telangana politics', '"Revanth Reddy"', 'KTR BRS', '"Harish Rao"', 'Telangana BJP',
                               'Telangana minister', 'Telangana cabinet', 'Telangana government scheme',
                               'Telangana Congress', 'Telangana High Court']},
-    "sports": {"label": "Sports News", "chip": "SPORTS", "te_chip": "క్రీడలు", "political": False, "state": None,
+    "sports": {"label": "Sports / Entertainment News", "chip": "SPORTS", "te_chip": "క్రీడలు", "political": False, "state": None,
                "queries": ['(cricket OR football OR hockey OR badminton OR tennis OR chess OR athletics OR kabaddi) India',
-                           '(BCCI OR "Team India" OR Olympic OR medal OR tournament OR championship)']},
+                           '(BCCI OR "Team India" OR Olympic OR medal OR tournament OR championship)',
+                           'India (cinema OR entertainment OR film OR actor OR OTT)']},
     "national": {"label": "National News", "chip": "NATIONAL", "te_chip": "జాతీయ", "political": False, "state": None,
                  "queries": ['"India" (government OR parliament OR minister OR "Supreme Court" OR election OR Centre)',
                              '(Modi OR "Union Cabinet" OR "Lok Sabha" OR "Rajya Sabha" OR "Election Commission")']},
@@ -6770,6 +6771,10 @@ ONE_SLIDER_TOPICS = {
                 "political": False, "state": None,
                 "queries": ['(Sensex OR Nifty OR RBI OR economy OR inflation OR GDP OR rupee OR earnings) India',
                             '("artificial intelligence" OR technology OR ISRO OR startup OR semiconductor OR telecom) India']},
+}
+ONE_SLIDER_TOPICS["brief"] = {
+    "label": "In Brief", "chip": "IN BRIEF", "te_chip": "సంక్షిప్తంగా", "political": False, "state": None,
+    "queries": ["India news", "Telangana news", "Andhra Pradesh news", "India world affairs", "India business technology", "India sports entertainment"],
 }
 ONE_SLIDER_MAX = 6
 ONE_SLIDER_TITLE = {"en": "Today\u2019s headlines.", "te": "నేటి ముఖ్యాంశాలు."}
@@ -6822,10 +6827,12 @@ _HYDERABAD_RX = _rx([r"hyderabad", r"secunderabad", r"cyberabad", r"rachakonda",
 def detect_one_slider_request(text: str):
     """The one-slide topic a typed request asks for ('Telangana headlines', 'sports one slider'), or None."""
     t = (text or "").lower()
+    if re.search(r"\bin brief\b", t):
+        return "brief"
     if not re.search(r"head ?lines?|one[- ]?slider|one[- ]slide|single slide", t):
         return None
     for key, words in (("hyderabad", r"hyderabad"), ("ap", r"\bap\b|andhra"), ("telangana", r"telangana|\btg\b"),
-                       ("sports", r"sport"), ("national", r"national|india\b"),
+                       ("sports", r"sport|entertainment"), ("national", r"national|india\b"),
                        ("biztech", r"business|tech|economy|market")):
         if re.search(words, t):
             return key
@@ -6939,10 +6946,11 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
 
 ONE_SLIDER_CAPTION_STYLES = {"concise": "Concise", "detailed": "Detailed"}
 ONE_SLIDER_HASHTAGS = {
+    "brief": ["#News", "#InBrief"],
     "hyderabad": ["#Hyderabad", "#HyderabadNews"],
     "ap": ["#AndhraPradesh", "#APNews"],
     "telangana": ["#Telangana", "#TelanganaNews"],
-    "sports": ["#Sports", "#SportsNews"],
+    "sports": ["#Sports", "#Entertainment"],
     "national": ["#India", "#NationalNews"],
     "biztech": ["#Business", "#Technology"],
 }
@@ -7183,168 +7191,173 @@ def _outlet_text(n: int, lang: str) -> str:
     return f"{n} \u0c35\u0c3e\u0c30\u0c4d\u0c24\u0c3e \u0c38\u0c02\u0c38\u0c4d\u0c25\u0c32\u0c41" if lang == "te" else f"Reported by {n} outlets"
 
 
-def _slide_one(cv, edit):
-    """The one-slide headlines in their topic's colours: a colour band with the topic, a highlighted lead story,
-    numbered headline cards (with status tags and outlet counts), a follow strip and the sources."""
-    lang = cv.lang
-    compact = bool(getattr(cv, "compact", False))
-    th = ONE_SLIDER_THEMES.get(edit.get("theme") or edit["topic"], ONE_SLIDER_THEMES["national"])
-    band = ONE_SLIDER_BAND_COMPACT if compact else ONE_SLIDER_BAND
-    if cv.slide is not None:
-        bg = cv.slide.background.fill
-        bg.solid()
-        bg.fore_color.rgb = RGBColor.from_string(th["tint"])
-    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, 0, DECK_W, band, th["primary"], name="Colour band")
-    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, band, DECK_W, 8, th["accent"], name="Accent bar")
-    if os.path.isfile(os.path.join(CAROUSEL_ASSETS_DIR, "logo_white.png")):
-        cv.image("logo_white", 24, 14, 70, 70)
-    else:
-        cv.text(30, 30, 68, "CP", 27, color="white", bold=True, scaled=False, name="CamPen monogram")
-    cv.lettering("header", 104, 36, 380, 18, role="body", color="white", fit_h=26, name="Header")
-    cv.text(520, 36, 262, _deck_date(edit), 18, role="body", color="white", bold=True, align="right", scaled=False,
-            name="Date")
-    topic = ((edit.get("te") or {}).get("chip") or ONE_SLIDER_TOPICS[edit["topic"]]["te_chip"]) if lang == "te" \
-        else (edit.get("chip") or ONE_SLIDER_TOPICS[edit["topic"]]["chip"])
-    size = ((72 if compact else 96) if lang == "en" else (56 if compact else 72))
-    while size > 36 and (_text_width(topic, size, cv.kind_for("display"), True) > 740):
-        size -= 4
-    top = 100 if compact else 104
-    cv.text(34, top, 750, topic, size, role="display", color="white", bold=True, scaled=False, name="Topic")
-    sub = ((edit.get("te") or {}).get("title") or ONE_SLIDER_TITLE["te"]) if lang == "te" \
-        else (edit.get("title") or ONE_SLIDER_TITLE["en"])
-    cv.text(38, top + size * 1.18 + 6, 740, sub.rstrip("."), (28 if compact else 30) if lang == "en" else 26,
-            role="body", color=th["accent"], bold=True, scaled=False, name="Subtitle")
+# Topic artwork extracted from the user's Instagram news summary templates.pdf.
+# Dates, subtitle, numbered headlines and source credits are real editable text.
+ONE_SLIDER_ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "one_slider_assets")
+ONE_SLIDER_TEMPLATE_LAYOUTS = {
+    "hyderabad": dict(page=1, height=1080, x=380, w=391, ys=[421,514,607,700,794,887], row_h=72,
+                      nx=318, ny=[438,531,626,719,813,906], color="134F86", date=(622,60,151,25),
+                      subtitle=(258,340,490,44), source=(327,996,449,62), date_color="134F86", serif=False),
+    "ap": dict(page=2, height=1080, x=372, w=392, ys=[337,440,543,646,748,850], row_h=80,
+               nx=304, ny=[354,459,563,666,767,870], color="601710", date=(27,884,171,28),
+               subtitle=(269,253,484,48), source=(268,963,500,90), date_color="CF8A1F", serif=True),
+    "telangana": dict(page=3, height=1080, x=332, w=441, ys=[371,480,584,690,796,902], row_h=75,
+                      nx=272, ny=[389,496,606,712,818,924], color="164B4A", date=(624,42,151,26),
+                      subtitle=(32,258,700,49), source=(260,1004,512,55), date_color="F5EDDA", serif=False),
+    "national": dict(page=4, height=1080, x=330, w=441, ys=[363,473,578,685,790,894], row_h=75,
+                     nx=272, ny=[381,491,599,707,809,914], color="123B54", date=(644,45,132,25),
+                     subtitle=(249,244,511,47), source=(249,1008,522,49), date_color="F5EDDA", serif=False),
+    "biztech": dict(page=5, height=1080, x=348, w=425, ys=[367,473,575,681,787,888], row_h=77,
+                    nx=283, ny=[384,490,597,703,806,909], color="114F49", date=(642,42,134,26),
+                    subtitle=(35,258,700,49), source=(252,993,520,58), date_color="F5EDDA", serif=False),
+    "sports": dict(page=6, height=1012.5, x=355, w=417, ys=[366,461,562,660,758,854], row_h=73,
+                   nx=296, ny=[380,478,579,676,774,872], color="17223F", date=(637,30,139,26),
+                   subtitle=(38,273,640,47), source=(265,944,510,56), date_color="F5EDDA", serif=False),
+    "brief": dict(page=7, height=1080, x=216, w=556, ys=[340,438,545,658,762,867], row_h=76,
+                  nx=142, ny=[356,454,561,672,775,881], color="25271C", date=(649,30,128,24),
+                  subtitle=(33,193,700,45), source=(113,987,658,38), date_color="F5EDDA", serif=True),
+}
 
-    if not compact:
-        count = sum(bool(i.get("include")) for i in edit["items"])
-        label = f"{count} HEADLINES" if lang == "en" else f"{count} ముఖ్యాంశాలు"
-        cv.text(540, band - 30, 220, label, 14, color=th["accent"], align="right", bold=True,
-                scaled=False, name="Headline count")
 
-    y = band + 8 + (26 if compact else 34)
-    items = [i for i in edit["items"] if i["include"]][:ONE_SLIDER_MAX]
-    show_counts = edit.get("show_counts", True) and not compact
-    kk = min(cv.k, 1.2)
-    gap = 16 * kk
-    for n, it in enumerate(items, 1):
-        lead = n == 1 and edit.get("highlight_lead", True)
-        text = (it.get("te") or {}).get("text", "") if lang == "te" else it["text"]
-        size_h = 31 if lead else 27
-        th_txt = _text_height(text, size_h * cv.k, 585, cv.kind_for("brand"), True, 1.0)
-        tag = (it.get("tag") or "").strip().lower()
-        count = len(it.get("outlets") or [])
-        show_count = show_counts and count >= 2
-        has_sub = bool(tag) or show_count
-        sub_h = (24 if tag else 18) * kk if has_sub else 0
-        content_h = th_txt + ((6 * kk + sub_h) if has_sub else 0)
-        card_h = max(content_h + 30 * kk, 84 * kk)
-        ty = y + (card_h - content_h) / 2
-        _one_shape(cv, MSO_SHAPE.ROUNDED_RECTANGLE, 32, y, 746, card_h, th["primary"] if lead else "FFFFFF",
-                   line=None if lead else "E5E7EB", name=f"Card {n}", adj=0.08)
-        _one_shape(cv, MSO_SHAPE.RECTANGLE, 32, y + 10, 7, card_h - 20, th["accent"] if lead else th["primary"],
-                   name=f"Card edge {n}")
-        d = 52 * min(cv.k, 1.15)
-        circle = _one_shape(cv, MSO_SHAPE.OVAL, 62, y + (card_h - d) / 2, d, d, th["accent"] if lead else th["primary"],
-                            name=f"Number {n}")
-        if circle is not None:
-            tf = circle.text_frame
-            tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
-            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            para = tf.paragraphs[0]
-            para.alignment = PP_ALIGN.CENTER
-            r = para.add_run()
-            r.text = str(n)
-            r.font.size, r.font.bold = Pt(26 * min(cv.k, 1.15)), True
-            r.font.color.rgb = RGBColor.from_string(th["primary"] if lead else "FFFFFF")
-            _deck_set_font(r, cv.font_for("brand"), False)
-        cv.text(140, ty, 600, text, size_h, role="brand", color="FFFFFF" if lead else "181818", bold=True,
-                name=f"Headline {n}")
-        source = next((link["url"] for link in it.get("links", []) if _source_url_ok(link.get("url", ""))), "")
-        if cv.slide is not None and source:
-            # Keep text editable while making the headline itself open its source article.
-            for paragraph in cv.slide.shapes[-1].text_frame.paragraphs:
-                for run in paragraph.runs:
-                    run.hyperlink.address = source
-        if has_sub:
-            sx, sy = 140, ty + th_txt + 6 * kk
-            if tag:
-                label = te_label(tag.upper()) if lang == "te" else tag.upper()
-                cw, _ch = cv.chip(sx, sy, label, "chip_red", 12, scaled=False)
-                sx += cw + 10
-            if show_count:
-                cv.text(sx, sy + 3, 500, _outlet_text(count, lang), 13, role="body",
-                        color=th["accent"] if lead else "64748B", bold=True, scaled=False, name=f"Outlets {n}")
-        y += card_h + gap
+def _one_wrap(text, size, width, kind, bold=True):
+    lines=[]
+    for paragraph in text.split("\n"):
+        current=""
+        for word in paragraph.split():
+            if _text_width(word,size,kind,bold) > width:
+                return None
+            candidate=(current+" "+word).strip()
+            if current and _text_width(candidate,size,kind,bold)>width:
+                lines.append(current)
+                current=word
+            else:
+                current=candidate
+        lines.append(current)
+    return lines
 
-    # follow strip (the template's share icon + the follow line), then the sources
-    _one_shape(cv, MSO_SHAPE.ROUNDED_RECTANGLE, 32, 936, 746, 58, th["primary"], name="Follow strip", adj=0.2)
-    if os.path.isfile(os.path.join(CAROUSEL_ASSETS_DIR, "share_icon.png")):
-        cv.image("share_icon", 46, 942, 44, 46)
-    else:
-        cv.text(48, 950, 42, "↗", 25, color="white", bold=True, scaled=False, name="Share icon")
-    if lang == "te":
-        follow = (edit.get("te") or {}).get("follow") or TE_LABELS[DECK_FOLLOW_DEFAULT]
-    else:
-        follow = edit.get("follow") or DECK_FOLLOW_DEFAULT
-    fs = 17
-    for fs in (17, 15, 13):
-        if _text_height(follow, fs, 650, cv.kind_for("body"), False, 1.0) <= 46:
-            break
-    cv.text(104, 940, 650, follow, fs, role="body", color="FFFFFF", scaled=False, h=50, anchor="middle",
-            name="Follow line")
-    names = []
-    for it in items:
-        for l in it["links"]:
-            if l["name"] not in names:
-                names.append(l["name"])
+
+def _one_template_plan(edit: dict, lang="en") -> list:
+    layout=ONE_SLIDER_TEMPLATE_LAYOUTS[edit["topic"]]
+    kind="telugu" if lang=="te" else ("serif" if layout["serif"] else "sans")
+    entries=[]
+    def fit(name,text,box,color,max_size,min_size,bold=True,align="left",font_kind=None,link="",center=False):
+        x,y,w,h=box
+        use_kind=font_kind or kind
+        for size in range(max_size,min_size-1,-1):
+            lines=_one_wrap(text,size,w,use_kind,bold)
+            if lines is not None and len(lines)*size*1.2<=h:
+                text_h=len(lines)*size*1.2
+                entries.append(dict(name=name,text="\n".join(lines),x=x,y=y+(h-text_h)/2 if center else y,
+                                    w=w,h=text_h+2,size=size,kind=use_kind,bold=bold,align=align,color=color,link=link))
+                return
+        raise ValueError(f"{name} is too long for this template. Shorten it or choose another headline.")
+    fit("Date",datetime.strptime(edit["day"],"%Y-%m-%d").strftime("%d %b %Y").upper(),
+        layout["date"],layout["date_color"],14,10,font_kind="sans",align="right" if edit["topic"]!="ap" else "left")
+    subtitle=((edit.get("te") or {}).get("title") or ONE_SLIDER_TITLE["te"]) if lang=="te" else edit.get("title") or ONE_SLIDER_TITLE["en"]
+    fit("Subtitle",subtitle.rstrip("."),layout["subtitle"],layout["date_color"] if edit["topic"] in ("telangana","national","biztech","sports","brief") else layout["color"],
+        27,18,font_kind="telugu" if lang=="te" else ("serif" if layout["serif"] else "sans"))
+    items=[item for item in edit["items"] if item.get("include")]
+    if len(items)>ONE_SLIDER_MAX:
+        raise ValueError("Choose up to six headlines for one slide.")
+    for n,item in enumerate(items):
+        text=(item.get("te") or {}).get("text","") if lang=="te" else item["text"]
+        if not text.strip():
+            raise ValueError("A selected headline is empty or not translated.")
+        link=next((l["url"] for l in item.get("links",[]) if _source_url_ok(l.get("url",""))),"")
+        fit(f"Headline {n+1}",text,(layout["x"],layout["ys"][n],layout["w"],layout["row_h"]),layout["color"],
+            25 if layout["serif"] else 23,17,link=link,center=True)
+        fit(f"Number {n+1}",str(n+1),(layout["nx"],layout["ny"][n],40,37),"FFFFFF",23,18,font_kind="sans",align="center",center=True)
+    names=list(dict.fromkeys(l["name"] for item in items for l in item.get("links",[]) if l.get("name")))
     if names:
-        prefix = te_label("SOURCES:") if lang == "te" else "Sources:"
-        more = f" +{len(names) - 8}" if len(names) > 8 else ""
-        cv.text(36, 1006, 740, prefix + " " + ", ".join(names[:8]) + more, 15, role="brand", color="475569", bold=True,
-                scaled=False, h=44, name="Sources")
-    _one_shape(cv, MSO_SHAPE.RECTANGLE, 0, 1068, DECK_W, 12, th["primary"], name="Closing bar")
-    return ONE_SLIDER_BOTTOM - (y - gap)
+        prefix="మూలాలు: " if lang=="te" else "Sources: "
+        for count in range(len(names),0,-1):
+            text=prefix+", ".join(names[:count])+(f" +{len(names)-count} more (see sources)" if count<len(names) else "")
+            try:
+                fit("Sources",text,layout["source"],layout["color"],12,10,bold=False,font_kind="telugu" if lang=="te" else "sans")
+                break
+            except ValueError:
+                if count==1:raise
+    return entries
 
 
 def _one_fit(edit: dict, lang: str):
-    """(text scale, compact?) at which every ticked headline fits the slide, or None if even the smallest doesn't."""
-    for compact in ((True, False) if edit.get("layout") == "compact" else (False, True)):
-        for k in ONE_SLIDER_SCALES:
-            cv = _DeckCanvas(None, lang, {}, k)
-            cv.compact = compact
-            if _slide_one(cv, edit) >= 0:
-                return k, compact
-    return None
+    try:
+        _one_template_plan(edit,lang)
+        return 1.0,False
+    except (ValueError,KeyError):
+        return None
+
+
+def _one_template_path(edit):
+    path=os.path.join(ONE_SLIDER_ASSETS_DIR,edit["topic"]+".png")
+    if not os.path.isfile(path):
+        raise RuntimeError("The one_slider_assets folder is missing or incomplete. Extract the complete update ZIP beside app.py and updatedcode.py.")
+    return path
+
+
+def _one_font_name(kind):
+    return {"serif":"Times New Roman","telugu":"Nirmala UI"}.get(kind,"Arial")
 
 
 def build_one_slider_pptx(edit: dict, lang: str = "en") -> bytes:
-    """The approved one-slide headlines as an editable PowerPoint slide (CamPen style)."""
+    """User's topic-specific artwork, with editable daily copy and linked headlines."""
     if Presentation is None:
-        raise RuntimeError("python-pptx isn't installed. Run:  pip install python-pptx")
-    errs = one_slider_problems(edit, lang)
+        raise RuntimeError("python-pptx isn't installed. Run: pip install python-pptx")
+    path=_one_template_path(edit)
+    errs=one_slider_problems(edit,lang)
     if errs:
-        raise ValueError("Not ready:\n- " + "\n- ".join(errs))
-    if lang == "te" and not (edit.get("te") or {}).get("chip"):
-        edit.setdefault("te", {})["chip"] = ONE_SLIDER_TOPICS[edit["topic"]]["te_chip"]
-    fit = _one_fit(edit, lang)          # fewer headlines are shown larger -- never a half-empty slide
-    if fit is None:
-        raise ValueError("Too much text for one slide -- shorten the headlines or untick one.")
-    k, compact = fit
-    prs = Presentation()
-    prs.slide_width, prs.slide_height = Pt(DECK_W), Pt(DECK_H)
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    cv = _DeckCanvas(slide, lang, {}, k)
-    cv.compact = compact
-    _slide_one(cv, edit)
-    slide.notes_slide.notes_text_frame.text = "Post caption:\n" + one_slider_caption_text(edit, lang) + "\n\nSources:\n" + "\n".join(
-        f"{i['text']}\n  " + "\n  ".join(f"{l['name']}: {l['url']}" for l in i["links"])
-        for i in edit["items"] if i["include"])
-    cp = prs.core_properties
-    cp.title = f"CamPen Media {edit['label']} headlines {edit['day']}" + (" (Telugu)" if lang == "te" else "")
-    cp.author = edit["approver"]
-    cp.comments = f"Approved by {edit['approver']}."
-    buf = _io.BytesIO()
-    prs.save(buf)
+        raise ValueError("Not ready:\n- "+"\n- ".join(errs))
+    layout=ONE_SLIDER_TEMPLATE_LAYOUTS[edit["topic"]]
+    prs=Presentation()
+    prs.slide_width,prs.slide_height=Pt(810),Pt(layout["height"])
+    slide=prs.slides.add_slide(prs.slide_layouts[6])
+    _deck_set_background(slide,path)
+    for entry in _one_template_plan(edit,lang):
+        box=slide.shapes.add_textbox(Pt(entry["x"]),Pt(entry["y"]),Pt(entry["w"]),Pt(entry["h"]))
+        box.name=entry["name"]
+        tf=box.text_frame
+        tf.word_wrap=False
+        tf.margin_left=tf.margin_right=tf.margin_top=tf.margin_bottom=0
+        for i,line in enumerate(entry["text"].split("\n")):
+            paragraph=tf.paragraphs[0] if i==0 else tf.add_paragraph()
+            paragraph.alignment={"left":PP_ALIGN.LEFT,"right":PP_ALIGN.RIGHT,"center":PP_ALIGN.CENTER}[entry["align"]]
+            paragraph.space_before=paragraph.space_after=Pt(0)
+            paragraph.line_spacing=Pt(entry["size"]*1.2)
+            run=paragraph.add_run();run.text=line
+            run.font.size=Pt(entry["size"]);run.font.bold=entry["bold"]
+            run.font.color.rgb=RGBColor.from_string(entry["color"])
+            _deck_set_font(run,_one_font_name(entry["kind"]),lang=="te")
+            if entry["link"]:run.hyperlink.address=entry["link"]
+    slide.notes_slide.notes_text_frame.text="Post caption:\n"+one_slider_caption_text(edit,lang)+"\n\nSources:\n"+"\n".join(
+        f"{i['text']}\n  "+"\n  ".join(f"{l['name']}: {l['url']}" for l in i.get("links",[]))
+        for i in edit["items"] if i.get("include"))
+    prs.core_properties.title=f"CamPen {edit['label']} — {edit['day']}"
+    prs.core_properties.author=edit["approver"]
+    buf=_io.BytesIO();prs.save(buf)
+    return buf.getvalue()
+
+
+def build_one_slider_png(edit: dict, lang: str = "en") -> bytes:
+    """Instagram-ready image rendered from exactly the same text plan as PowerPoint."""
+    from PIL import Image,ImageDraw,ImageFont
+    errs=one_slider_problems(edit,lang)
+    if errs:raise ValueError("Not ready:\n- "+"\n- ".join(errs))
+    image=Image.open(_one_template_path(edit)).convert("RGB")
+    scale=image.width/810
+    draw=ImageDraw.Draw(image)
+    for entry in _one_template_plan(edit,lang):
+        font,_factor=_measure_font(entry["kind"],entry["bold"],entry["size"])
+        if font is None:
+            if entry["kind"]=="telugu":
+                raise RuntimeError("Install Nirmala UI or Noto Sans Telugu to render Telugu images.")
+            font=ImageFont.load_default(size=round(entry["size"]*scale))
+        else:font=font.font_variant(size=round(entry["size"]*scale))
+        for i,line in enumerate(entry["text"].split("\n")):
+            x=entry["x"]*scale
+            if entry["align"]=="right":x+=entry["w"]*scale-draw.textlength(line,font=font)
+            elif entry["align"]=="center":x+=(entry["w"]*scale-draw.textlength(line,font=font))/2
+            draw.text((x,(entry["y"]+i*entry["size"]*1.2)*scale),line,font=font,fill="#"+entry["color"],anchor="lt")
+    buf=_io.BytesIO();image.save(buf,"PNG")
     return buf.getvalue()
 
 
