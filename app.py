@@ -1056,6 +1056,10 @@ def render_one_slider(msg: dict, kp: str) -> None:
     edit = st.session_state[ek]
     if st.session_state.pop(f"{kp}_one_reset_checked", False):
         st.session_state[f"{kp}_one_checked"] = False
+        st.session_state[f"{kp}_one_te_checked"] = False
+    if st.session_state.pop(f"{kp}_one_sync_review", False):
+        st.session_state[f"{kp}_one_checked"] = bool(edit.get("checked"))
+        st.session_state[f"{kp}_one_approver"] = edit.get("approver", "")
     if not edit.get("caption") and any(i.get("include") for i in edit["items"]):
         edit["caption"] = uc.generate_one_slider_caption(edit)
     st.markdown(f"**📰 {edit['label']} — one-slide headlines · {edit['day']}**")
@@ -1074,7 +1078,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if edit.get("fetched_at"):
         st.caption("News fetched: " + edit["fetched_at"])
     with st.form(f"{kp}_one_form"):
-        st.caption("The attached Instagram template is matched automatically to this topic.")
+        st.caption("Template font, weight, colour and point size are fixed to the supplied design. Long headlines must be edited to fit; fonts are not reduced.")
         st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
         for it in edit["items"]:
             c1, c2 = st.columns([1, 11])
@@ -1091,6 +1095,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if saved:
         ss = st.session_state
         previous_signature = uc.one_slider_signature(edit)
+        previous_checked = bool(edit.get("checked"))
         edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
         for it in edit["items"]:
             it["include"] = bool(ss.get(f"{kp}_one_inc_{it['id']}", it["include"]))
@@ -1101,11 +1106,13 @@ def render_one_slider(msg: dict, kp: str) -> None:
             it["text"] = new
         edit["checked"] = bool(ss.get(f"{kp}_one_checked", edit["checked"]))
         edit["approver"] = ss.get(f"{kp}_one_approver", edit["approver"]).strip()
-        if previous_signature != uc.one_slider_signature(edit):
+        if previous_signature != uc.one_slider_signature(edit) and previous_checked:
             edit["checked"] = False
             ss[f"{kp}_one_reset_checked"] = True
         for k in (f"{kp}_one_en", f"{kp}_one_te"):
             ss.pop(k, None)
+        ss[f"{kp}_one_te_checked"] = bool(edit.get("checked"))
+        ss[f"{kp}_one_te_approver"] = edit.get("approver", "")
         st.success("Saved.")
     st.markdown("**Post caption**")
     st.caption("Captions use the saved, selected headlines. Save headline changes before regenerating.")
@@ -1179,6 +1186,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.download_button("⬇️ Selected sources page (.html)", uc.one_slider_sources_html(edit),
                            file_name=f"CamPen_{edit['topic']}_{edit['day']}_sources.html", mime="text/html", key=f"{kp}_sources_dl")
 
+    for notice in uc.one_slider_font_warnings(edit):
+        st.info(notice)
     errs = uc.one_slider_problems(edit)
     if errs:
         st.error("**Before building the slide:**\n" + "\n".join(f"- {e}" for e in errs))
@@ -1211,7 +1220,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
               on_click=_translate_one)
     if f"{kp}_one_tr_problems" in st.session_state:
         problems = st.session_state.pop(f"{kp}_one_tr_problems")
-        done = sum(1 for i in edit["items"] if i["include"] and uc.telugu_share((i.get("te") or {}).get("text", "")) >= 0.5)
+        done = sum(1 for i in edit["items"] if i["include"] and uc._is_telugu((i.get("te") or {}).get("text", "")))
         total = sum(1 for i in edit["items"] if i["include"])
         (st.success if done == total else st.warning)(f"Translated {done} of {total} headlines -- check them below.")
         show_translation_problems(problems)
@@ -1219,15 +1228,23 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if client is None:
         st.caption("Translating needs a Sarvam API key; you can also type the Telugu yourself below.")
     with st.form(f"{kp}_one_te_form"):
+        st.caption("Save your Telugu text and review details here to enable the build button.")
         for it in [i for i in edit["items"] if i["include"]]:
             st.text_input(it["text"][:80], (it.get("te") or {}).get("text", ""), key=f"{kp}_one_te_{it['id']}")
+        st.checkbox("I checked the selected source links and reviewed the Telugu headlines", bool(edit.get("checked")), key=f"{kp}_one_te_checked")
+        st.text_input("Approving editor for Telugu", edit.get("approver", ""), key=f"{kp}_one_te_approver")
         te_saved = st.form_submit_button("💾 Save Telugu")
     if te_saved:
+        edit["checked"] = bool(st.session_state.get(f"{kp}_one_te_checked", False))
+        edit["approver"] = st.session_state.get(f"{kp}_one_te_approver", "").strip()
+        st.session_state[f"{kp}_one_sync_review"] = True
         for it in [i for i in edit["items"] if i["include"]]:
             it.setdefault("te", {})["text"] = st.session_state.get(f"{kp}_one_te_{it['id']}", "").strip()
         st.session_state.pop(f"{kp}_one_te", None)
         st.success("Telugu saved.")
     te_errs = uc.one_slider_problems(edit, "te")
+    if te_errs:
+        st.warning("To enable the Telugu build button:\n" + "\n".join(f"- {problem}" for problem in te_errs))
     if st.button("✅ Approve & build the slide (Telugu)", key=f"{kp}_one_build_te", disabled=bool(te_errs)):
         try:
             st.session_state[f"{kp}_one_te"] = uc.build_one_slider_pptx(edit, "te")
