@@ -6497,7 +6497,7 @@ def _sarvam_translate(client, text: str, model: str = DEFAULT_MODEL) -> str:
     raise ValueError("; ".join(tries) or "no Telugu translation")
 
 
-def translate_texts_te(client, texts: list, model: str = DEFAULT_MODEL) -> tuple:
+def translate_texts_te(client, texts: list, model: str = DEFAULT_MODEL, allow_mixed_script: bool = False) -> tuple:
     """Translate many texts with as FEW requests as possible: they are sent together as numbered lines
     ([1] ... [2] ...) in chunks under Sarvam's 2,000-character limit. Every line's result is checked to be
     Telugu; only lines that fail are retried one by one. Returns (results, errors) -- results[i] is "" where
@@ -6507,6 +6507,12 @@ def translate_texts_te(client, texts: list, model: str = DEFAULT_MODEL) -> tuple
     stop = []                                    # set to Sarvam's message when continuing is pointless
     deadline = time.monotonic() + TRANSLATE_DEADLINE
     clean = [" ".join((t or "").split()) for t in texts]
+
+    def good(src, out):
+        if not allow_mixed_script:
+            return _is_good_telugu(src, out)
+        out = (out or "").strip()
+        return bool(out and out.lower() != (src or "").strip().lower() and _is_telugu(out))
 
     def note_failure(e):
         if _is_hard_stop(e) or _is_retryable(e):   # bad key / no credits / rate limit still blocking after retries
@@ -6538,23 +6544,26 @@ def translate_texts_te(client, texts: list, model: str = DEFAULT_MODEL) -> tuple
         got = {}
         if len(idx) > 1 or len(payload) <= 2000:
             try:
-                got = parse(_translate_call(client, payload, "sarvam-translate:v1"), idx)
+                reply = _translate_call(client, payload, "sarvam-translate:v1")
+                got = parse(reply, idx)
+                if len(idx) == 1 and not got and good(clean[idx[0]], reply):
+                    got = {idx[0]: reply.strip()}
             except Exception as e:
                 errors.append(f"batch request: {_short_error(e)}")
                 note_failure(e)
                 if stop:
                     break
-            if len(idx) > 1 and sum(1 for i in idx if _is_good_telugu(clean[i], got.get(i, ""))) < len(idx) \
+            if len(idx) > 1 and sum(1 for i in idx if good(clean[i], got.get(i, ""))) < len(idx) \
                     and getattr(client, "chat", None) is not None:
                 try:              # the chat model keeps numbered lists well -- one request for the rest
-                    rest = [i for i in idx if not _is_good_telugu(clean[i], got.get(i, ""))]
+                    rest = [i for i in idx if not good(clean[i], got.get(i, ""))]
                     more = parse(_chat_translate(client, "\n".join(f"[{k}] {clean[i]}" for k, i in enumerate(rest, 1)),
                                                  model), rest)
-                    got.update({i: v for i, v in more.items() if _is_good_telugu(clean[i], v)})
+                    got.update({i: v for i, v in more.items() if good(clean[i], v)})
                 except Exception as e:
                     errors.append(f"chat batch: {_short_error(e)}")
         for i in idx:
-            if _is_good_telugu(clean[i], got.get(i, "")):
+            if good(clean[i], got.get(i, "")):
                 results[i] = got[i]
                 continue
             if stop or time.monotonic() > deadline:
@@ -7118,26 +7127,28 @@ def one_slider_problems(edit: dict, lang: str = "en") -> list:
         errs.append(f"At most {ONE_SLIDER_MAX} headlines fit on the slide.")
     if any(not i["text"].strip() for i in inc):
         errs.append("A ticked headline is empty.")
-    if inc and len(inc) <= ONE_SLIDER_MAX and _one_fit(edit, lang) is None:
-        errs.append("Too much text for one slide -- shorten the headlines or untick one.")
+    if inc and len(inc) <= ONE_SLIDER_MAX:
+        try:
+            _one_template_plan(edit, lang)
+        except (ValueError, KeyError) as exc:
+            errs.append(str(exc))
     if not edit.get("checked"):
         errs.append("Confirm the headlines were checked against the linked sources.")
     if not (edit.get("approver") or "").strip():
         errs.append("Enter the approving editor's name.")
     if lang == "te":
         for i in inc:
-            if telugu_share((i.get("te") or {}).get("text", "")) < 0.5:
-                errs.append(f"Not translated yet: \u201c{i['text'][:50]}\u201d")
+            if not _is_telugu((i.get("te") or {}).get("text", "")):
+                errs.append(f"Save Telugu text for: \u201c{i['text'][:50]}\u201d")
     return errs
 
 
 def translate_one_slider(edit: dict, client) -> list:
     """Telugu for every ticked headline (batched, checked to really be Telugu). Returns problems."""
     items = [i for i in edit["items"] if i["include"]]
-    results, errors = translate_texts_te(client, [i["text"] for i in items] + [edit.get("follow") or DECK_FOLLOW_DEFAULT])
+    results, errors = translate_texts_te(client, [i["text"] for i in items], allow_mixed_script=True)
     for it, out in zip(items, results):
         it.setdefault("te", {})["text"] = out
-    edit.setdefault("te", {})["follow"] = results[len(items)] if len(results) > len(items) else ""
     return errors
 
 
@@ -7219,64 +7230,126 @@ ONE_SLIDER_TEMPLATE_LAYOUTS = {
 }
 
 
-def _one_wrap(text, size, width, kind, bold=True):
+# Defaults measured from the supplied PDF, in points. Never shrink body copy to fit.
+ONE_SLIDER_FONT_DEFAULTS = {
+    "hyderabad": dict(head=("Inter-Bold",21.72,"144074"), subtitle=("Inter-SemiBold",33.35,"144074"),
+                      date=("Inter-SemiBold",18.65,"144074"), number=("Inter-SemiBold",26.08,"FFFFFF"), source=("Inter-SemiBold",14.89,"144074")),
+    "ap": dict(head=("BostonAngel-Bold",27.12,"2E2D2A"), subtitle=("BostonAngel-Bold",37.50,"621310"),
+               date=("Inter-SemiBold",18.32,"DB8630"), number=("Inter-SemiBold",31.27,"FFFFFF"), source=("Inter-Bold",19.31,"721610")),
+    "telangana": dict(head=("Inter-Bold",22.27,"113740"), subtitle=("Inter-SemiBold",30.23,"F2E9D4"),
+                      date=("Roboto-Bold",18.65,"E7F3E6"), number=("Inter-SemiBold",23.26,"FFFFFF"), source=("Inter-Bold",14.90,"1D7168")),
+    "national": dict(head=("PublicSans-Bold",23.26,"114066"), subtitle=("PublicSans-Bold",32.31,"F2E9D8"),
+                     date=("PublicSans-Bold",16.34,"F2E9D8"), number=("PublicSans-Bold",21.72,"FFFFFF"), source=("PublicSans-Bold",16.34,"114066")),
+    "biztech": dict(head=("Inter-Bold",23.26,"155044"), subtitle=("Inter-SemiBold",30.23,"E7F3E6"),
+                    date=("Roboto-Bold",18.65,"E7F3E6"), number=("Inter-SemiBold",24.78,"FFFFFF"), source=("Inter-SemiBold",16.91,"3363B5")),
+    "sports": dict(head=("Roboto-Bold",22.74,"15213D"), subtitle=("Roboto-Bold",35.68,"77A9E0"),
+                   date=("Roboto-Bold",19.40,"F2EFDB"), number=("Roboto-Bold",24.19,"FFFFFF"), source=("Roboto-Bold",16.52,"1A418F")),
+    "brief": dict(head=("Lora-Bold",21.72,"2E2E2E"), subtitle=("Lora-Bold",30.23,"E8E0CD"),
+                  date=("Lora-Bold",16.34,"E8E0CD"), number=("Lora-Bold",26.08,"FFFFFF"), source=("Lora-Bold",15.35,"2E2E2E")),
+}
+ONE_SLIDER_FONT_FAMILIES = {
+    "Inter-Bold":"Inter", "Inter-SemiBold":"Inter SemiBold", "PublicSans-Bold":"Public Sans",
+    "Roboto-Bold":"Roboto", "Lora-Bold":"Lora", "BostonAngel-Bold":"Boston Angel",
+    "NotoSansTelugu-Bold":"Noto Sans Telugu", "NotoSansTelugu-SemiBold":"Noto Sans Telugu SemiBold",
+}
+ONE_SLIDER_LINE_HEIGHTS = {
+    "hyderabad":29.49, "ap":32.11, "telangana":28.71, "national":27.73,
+    "biztech":29.85, "sports":28.78, "brief":25.42,
+}
+_ONE_FONT_CACHE = {}
+
+
+def _one_font_path(key):
+    directory=os.path.join(ONE_SLIDER_ASSETS_DIR,"fonts")
+    for extension in ("ttf","otf"):
+        candidate=os.path.join(directory,key+"."+extension)
+        if os.path.isfile(candidate):return candidate
+    if key=="BostonAngel-Bold":
+        # Proprietary font: use a named, disclosed fallback until the user's full font is supplied.
+        return _one_font_path("Lora-Bold")
+    raise ValueError(f"Template font {key} is missing. Upload the updated one_slider_assets/fonts folder.")
+
+
+def _one_template_font(key,size,scale=4):
+    from PIL import ImageFont
+    path=_one_font_path(key)
+    cache_key=(path,os.stat(path).st_mtime_ns,round(size*scale))
+    if cache_key not in _ONE_FONT_CACHE:
+        if len(_ONE_FONT_CACHE)>256:_ONE_FONT_CACHE.clear()
+        _ONE_FONT_CACHE[cache_key]=ImageFont.truetype(path,max(1,round(size*scale)))
+    return _ONE_FONT_CACHE[cache_key]
+
+
+def one_slider_font_warnings(edit,lang="en"):
+    if edit["topic"]=="ap" and lang=="en":
+        try:
+            fallback="BostonAngel-Bold" not in os.path.basename(_one_font_path("BostonAngel-Bold"))
+        except ValueError as exc:
+            return [str(exc)]
+        if fallback:
+            return ["AP template: the full Boston Angel Bold font is not included in the PDF. PowerPoint keeps that font name; PNG uses Lora Bold until your licensed BostonAngel-Bold.ttf or .otf is added to one_slider_assets/fonts."]
+    return []
+
+
+def _one_wrap(text,size,width,key,bold=True):
+    font=_one_template_font(key,size)
     lines=[]
     for paragraph in text.split("\n"):
         current=""
         for word in paragraph.split():
-            if _text_width(word,size,kind,bold) > width:
-                return None
+            if font.getlength(word)/4>width:return None
             candidate=(current+" "+word).strip()
-            if current and _text_width(candidate,size,kind,bold)>width:
-                lines.append(current)
-                current=word
-            else:
-                current=candidate
+            if current and font.getlength(candidate)/4>width:
+                lines.append(current);current=word
+            else:current=candidate
         lines.append(current)
     return lines
 
 
-def _one_template_plan(edit: dict, lang="en") -> list:
+def _one_template_plan(edit: dict,lang="en") -> list:
     layout=ONE_SLIDER_TEMPLATE_LAYOUTS[edit["topic"]]
-    kind="telugu" if lang=="te" else ("serif" if layout["serif"] else "sans")
+    styles=ONE_SLIDER_FONT_DEFAULTS[edit["topic"]]
     entries=[]
-    def fit(name,text,box,color,max_size,min_size,bold=True,align="left",font_kind=None,link="",center=False):
+    def fit(name,text,box,style,align="left",link="",center=False,telugu=False,line_height=None):
         x,y,w,h=box
-        use_kind=font_kind or kind
-        for size in range(max_size,min_size-1,-1):
-            lines=_one_wrap(text,size,w,use_kind,bold)
-            if lines is not None and len(lines)*size*1.2<=h:
-                text_h=len(lines)*size*1.2
-                entries.append(dict(name=name,text="\n".join(lines),x=x,y=y+(h-text_h)/2 if center else y,
-                                    w=w,h=text_h+2,size=size,kind=use_kind,bold=bold,align=align,color=color,link=link))
-                return
-        raise ValueError(f"{name} is too long for this template. Shorten it or choose another headline.")
+        key,size,color=style
+        if telugu:
+            key="NotoSansTelugu-SemiBold" if "SemiBold" in key else "NotoSansTelugu-Bold"
+        lines=_one_wrap(text,size,w,key)
+        line_height=line_height or size*1.2
+        text_h=(len(lines)-1)*line_height+size*1.2 if lines is not None else float("inf")
+        if lines is None or text_h>h:
+            raise ValueError(f"{name} does not fit at the template's fixed {size:g} pt size. Shorten this text or choose another headline; the font will not be reduced.")
+        entries.append(dict(name=name,text="\n".join(lines),x=x,y=y+(h-text_h)/2 if center else y,
+                            w=w,h=text_h+2,size=size,kind=key,bold="SemiBold" not in key,
+                            font_name=ONE_SLIDER_FONT_FAMILIES[key],align=align,color=color,link=link,line_height=line_height))
     fit("Date",datetime.strptime(edit["day"],"%Y-%m-%d").strftime("%d %b %Y").upper(),
-        layout["date"],layout["date_color"],14,10,font_kind="sans",align="right" if edit["topic"]!="ap" else "left")
+        layout["date"],styles["date"],align="right" if edit["topic"]!="ap" else "left")
     subtitle=((edit.get("te") or {}).get("title") or ONE_SLIDER_TITLE["te"]) if lang=="te" else edit.get("title") or ONE_SLIDER_TITLE["en"]
-    fit("Subtitle",subtitle.rstrip("."),layout["subtitle"],layout["date_color"] if edit["topic"] in ("telangana","national","biztech","sports","brief") else layout["color"],
-        27,18,font_kind="telugu" if lang=="te" else ("serif" if layout["serif"] else "sans"))
+    fit("Subtitle",subtitle.rstrip("."),layout["subtitle"],styles["subtitle"],telugu=lang=="te")
     items=[item for item in edit["items"] if item.get("include")]
-    if len(items)>ONE_SLIDER_MAX:
-        raise ValueError("Choose up to six headlines for one slide.")
+    if len(items)>ONE_SLIDER_MAX:raise ValueError("Choose up to six headlines for one slide.")
     for n,item in enumerate(items):
         text=(item.get("te") or {}).get("text","") if lang=="te" else item["text"]
-        if not text.strip():
-            raise ValueError("A selected headline is empty or not translated.")
+        if not text.strip():raise ValueError(f"Headline {n+1}: save the {'Telugu translation' if lang=='te' else 'headline text'} first.")
         link=next((l["url"] for l in item.get("links",[]) if _source_url_ok(l.get("url",""))),"")
-        fit(f"Headline {n+1}",text,(layout["x"],layout["ys"][n],layout["w"],layout["row_h"]),layout["color"],
-            25 if layout["serif"] else 23,17,link=link,center=True)
-        fit(f"Number {n+1}",str(n+1),(layout["nx"],layout["ny"][n],40,37),"FFFFFF",23,18,font_kind="sans",align="center",center=True)
+        fit(f"Headline {n+1}",text,(layout["x"],layout["ys"][n],layout["w"],layout["row_h"]),styles["head"],
+            link=link,center=True,telugu=lang=="te",line_height=ONE_SLIDER_LINE_HEIGHTS[edit["topic"]])
+        fit(f"Number {n+1}",str(n+1),(layout["nx"],layout["ny"][n],40,42),styles["number"],align="center",center=True)
     names=list(dict.fromkeys(l["name"] for item in items for l in item.get("links",[]) if l.get("name")))
     if names:
         prefix="మూలాలు: " if lang=="te" else "Sources: "
         for count in range(len(names),0,-1):
-            text=prefix+", ".join(names[:count])+(f" +{len(names)-count} more (see sources)" if count<len(names) else "")
+            text=prefix+", ".join(names[:count])+(f" +{len(names)-count} more" if count<len(names) else "")
             try:
-                fit("Sources",text,layout["source"],layout["color"],12,10,bold=False,font_kind="telugu" if lang=="te" else "sans")
+                fit("Sources",text,layout["source"],styles["source"],telugu=lang=="te")
                 break
             except ValueError:
-                if count==1:raise
+                if count==1:
+                    # Keep the template's font size even if a very long publisher name cannot fit.
+                    fit("Sources",("మూలాలు: " if lang=="te" else "Sources: ")+str(len(names))+
+                        (" (మూలాల పేజీ చూడండి)" if lang=="te" else " outlets (see sources page)"),
+                        layout["source"],styles["source"],telugu=lang=="te")
     return entries
 
 
@@ -7322,11 +7395,11 @@ def build_one_slider_pptx(edit: dict, lang: str = "en") -> bytes:
             paragraph=tf.paragraphs[0] if i==0 else tf.add_paragraph()
             paragraph.alignment={"left":PP_ALIGN.LEFT,"right":PP_ALIGN.RIGHT,"center":PP_ALIGN.CENTER}[entry["align"]]
             paragraph.space_before=paragraph.space_after=Pt(0)
-            paragraph.line_spacing=Pt(entry["size"]*1.2)
+            paragraph.line_spacing=Pt(entry["line_height"])
             run=paragraph.add_run();run.text=line
             run.font.size=Pt(entry["size"]);run.font.bold=entry["bold"]
             run.font.color.rgb=RGBColor.from_string(entry["color"])
-            _deck_set_font(run,_one_font_name(entry["kind"]),lang=="te")
+            _deck_set_font(run,entry["font_name"],lang=="te")
             if entry["link"]:run.hyperlink.address=entry["link"]
     slide.notes_slide.notes_text_frame.text="Post caption:\n"+one_slider_caption_text(edit,lang)+"\n\nSources:\n"+"\n".join(
         f"{i['text']}\n  "+"\n  ".join(f"{l['name']}: {l['url']}" for l in i.get("links",[]))
@@ -7346,17 +7419,12 @@ def build_one_slider_png(edit: dict, lang: str = "en") -> bytes:
     scale=image.width/810
     draw=ImageDraw.Draw(image)
     for entry in _one_template_plan(edit,lang):
-        font,_factor=_measure_font(entry["kind"],entry["bold"],entry["size"])
-        if font is None:
-            if entry["kind"]=="telugu":
-                raise RuntimeError("Install Nirmala UI or Noto Sans Telugu to render Telugu images.")
-            font=ImageFont.load_default(size=round(entry["size"]*scale))
-        else:font=font.font_variant(size=round(entry["size"]*scale))
+        font=_one_template_font(entry["kind"],entry["size"],scale)
         for i,line in enumerate(entry["text"].split("\n")):
             x=entry["x"]*scale
             if entry["align"]=="right":x+=entry["w"]*scale-draw.textlength(line,font=font)
             elif entry["align"]=="center":x+=(entry["w"]*scale-draw.textlength(line,font=font))/2
-            draw.text((x,(entry["y"]+i*entry["size"]*1.2)*scale),line,font=font,fill="#"+entry["color"],anchor="lt")
+            draw.text((x,(entry["y"]+i*entry["line_height"])*scale),line,font=font,fill="#"+entry["color"],anchor="lt")
     buf=_io.BytesIO();image.save(buf,"PNG")
     return buf.getvalue()
 
