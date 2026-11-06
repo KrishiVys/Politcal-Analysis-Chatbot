@@ -84,7 +84,8 @@ if _app_password and not st.session_state.get("auth_ok"):
 # updatedcode.py is in the folder (or an old copy is still loaded in a running
 # app), stop with clear instructions instead of failing mid-search.
 if (not hasattr(uc, "resolve_subject") or not hasattr(uc, "build_top_stories") or not hasattr(uc, "gather_daily_wrap")
-        or not hasattr(uc, "gather_daily_carousel") or not hasattr(uc, "build_one_slider_png")):
+        or not hasattr(uc, "gather_daily_carousel") or not hasattr(uc, "build_one_slider_png")
+        or not hasattr(uc, "rewrite_one_slider_headlines") or not hasattr(uc, "build_one_slider_editable_pptx")):
     st.error(
         "**Version mismatch:** this app.py is newer than the updatedcode.py it found at:\n\n"
         f"`{getattr(uc, '__file__', 'unknown location')}`\n\n"
@@ -1071,12 +1072,46 @@ def render_one_slider(msg: dict, kp: str) -> None:
         return
     selected = sum(bool(item.get("include")) for item in edit["items"])
     st.caption(f"{len(edit['items'])} retrieved news candidates · {selected} selected · choose up to {uc.ONE_SLIDER_MAX} for the slide.")
-    st.caption("Publisher headlines are shown without AI rewriting. Tick the news you want, then save your selection. "
-               "Source links are provided for review; a news listing is not independent verification.")
+    st.caption("A maximum of 10 distinct news stories is offered for each one-slider request.")
+    st.caption("Tick your news, then use Save & rewrite for posting to polish only the selected headlines. "
+               "Compare the rewrites with the source, review and approve, then translate to Telugu if needed.")
     if edit.get("coverage_window"):
         st.caption("News window: " + edit["coverage_window"])
     if edit.get("fetched_at"):
         st.caption("News fetched: " + edit["fetched_at"])
+    posting_height=round(uc.ONE_SLIDER_TEMPLATE_LAYOUTS[edit["topic"]]["height"]*1080/810)
+    st.caption(f"Original template size: 1080 × {posting_height} pixels. Use the posting PNG or fixed-format PowerPoint; preserve its dimensions when importing.")
+    def _save_and_rewrite():
+        ss = st.session_state
+        edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
+        for item in edit["items"]:
+            item["include"] = bool(ss.get(f"{kp}_one_inc_{item['id']}", item["include"]))
+            draft = ss.get(f"{kp}_one_txt_{item['id']}", item["text"]).strip()
+            if draft != item["text"]:
+                item["te"] = {}
+                ss.pop(f"{kp}_one_te_{item['id']}", None)
+            item["text"] = draft
+        edit["approver"] = ss.get(f"{kp}_one_approver", edit.get("approver", "")).strip()
+        edit["checked"] = False
+        try:
+            report = uc.rewrite_one_slider_headlines(edit, client)
+            ss[f"{kp}_one_rewrite_report"] = report
+            ss.pop(f"{kp}_one_rewrite_error", None)
+            for item in edit["items"]:
+                ss[f"{kp}_one_txt_{item['id']}"] = item["text"]
+                if item["id"] in report["changed"]:
+                    ss.pop(f"{kp}_one_te_{item['id']}", None)
+            if edit.get("caption"):
+                ss[f"{kp}_caption_en"] = edit["caption"]["text"]
+                ss[f"{kp}_caption_te"] = edit["caption"].get("te", "")
+        except ValueError as exc:
+            ss[f"{kp}_one_rewrite_error"] = str(exc)
+        for key in (f"{kp}_one_en", f"{kp}_one_te", f"{kp}_one_png_en", f"{kp}_one_png_te"):
+            ss.pop(key, None)
+        ss[f"{kp}_one_checked"] = False
+        ss[f"{kp}_one_te_checked"] = False
+        ss[f"{kp}_one_te_approver"] = edit["approver"]
+
     with st.form(f"{kp}_one_form"):
         st.caption("Template font, weight, colour and point size are fixed to the supplied design. Long headlines must be edited to fit; fonts are not reduced.")
         st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
@@ -1089,9 +1124,15 @@ def render_one_slider(msg: dict, kp: str) -> None:
                 c2.caption("Published: " + it["published"])
             c2.caption(f"{it['verification']} · " + " · ".join(f"[{l['name']}]({l['url']})" for l in it["links"][:4])
                        + (f" · outlet headline: “{it['original']}”" if it["original"] != it["text"] else ""))
+            if it.get("rewrite_status"):
+                c2.caption(it["rewrite_status"])
         st.checkbox("I checked these headlines against the linked sources", edit["checked"], key=f"{kp}_one_checked")
         st.text_input("Approving editor", edit["approver"], key=f"{kp}_one_approver")
         saved = st.form_submit_button("💾 Save")
+        st.form_submit_button("✍️ Save & rewrite for posting", key=f"{kp}_one_rewrite",
+                              on_click=_save_and_rewrite, disabled=client is None)
+        if client is None:
+            st.caption("AI rewriting needs your Sarvam connection. You can still edit and save headlines manually.")
     if saved:
         ss = st.session_state
         previous_signature = uc.one_slider_signature(edit)
@@ -1109,11 +1150,20 @@ def render_one_slider(msg: dict, kp: str) -> None:
         if previous_signature != uc.one_slider_signature(edit) and previous_checked:
             edit["checked"] = False
             ss[f"{kp}_one_reset_checked"] = True
-        for k in (f"{kp}_one_en", f"{kp}_one_te"):
+        for k in (f"{kp}_one_en", f"{kp}_one_te", f"{kp}_one_png_en", f"{kp}_one_png_te"):
             ss.pop(k, None)
         ss[f"{kp}_one_te_checked"] = bool(edit.get("checked"))
         ss[f"{kp}_one_te_approver"] = edit.get("approver", "")
         st.success("Saved.")
+    if st.session_state.get(f"{kp}_one_rewrite_error"):
+        st.warning(st.session_state[f"{kp}_one_rewrite_error"])
+    if st.session_state.get(f"{kp}_one_rewrite_report"):
+        report = st.session_state[f"{kp}_one_rewrite_report"]
+        st.info(f"{report['rewritten']} of {report['selected']} selected headlines polished. Review the wording against the source before approval.")
+        if report["issues"]:
+            with st.expander("Headlines that need manual editing"):
+                for item_id, issue in report["issues"].items():
+                    st.write(f"{item_id}: {issue} Previous wording was retained.")
     st.markdown("**Post caption**")
     st.caption("Captions use the saved, selected headlines. Save headline changes before regenerating.")
     style = st.selectbox("Caption style", list(uc.ONE_SLIDER_CAPTION_STYLES),
@@ -1140,7 +1190,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
                 edit["caption"]["text"] = st.session_state[f"{kp}_caption_en"].strip()
                 edit["caption"]["te"] = ""
                 st.session_state.pop(f"{kp}_caption_te", None)
-                for key in (f"{kp}_one_en", f"{kp}_one_te"):
+                for key in (f"{kp}_one_en", f"{kp}_one_te", f"{kp}_one_png_en", f"{kp}_one_png_te"):
                     st.session_state.pop(key, None)
         st.code(uc.one_slider_caption_text(edit), language=None)
         st.download_button("⬇️ English post caption (.txt)", uc.one_slider_caption_text(edit),
@@ -1151,6 +1201,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
             st.session_state[f"{kp}_caption_te"] = edit["caption"]["te"]
             st.session_state[f"{kp}_caption_te_problems"] = problems
             st.session_state.pop(f"{kp}_one_te", None)
+            st.session_state.pop(f"{kp}_one_png_te", None)
         st.button("Translate caption to Telugu", key=f"{kp}_caption_translate", disabled=client is None,
                   on_click=_translate_caption)
         show_translation_problems(st.session_state.get(f"{kp}_caption_te_problems", []))
@@ -1160,6 +1211,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
             if st.form_submit_button("Save Telugu caption"):
                 edit["caption"]["te"] = st.session_state[f"{kp}_caption_te"].strip()
                 st.session_state.pop(f"{kp}_one_te", None)
+                st.session_state.pop(f"{kp}_one_png_te", None)
         if uc.one_slider_caption_text(edit, "te"):
             st.code(uc.one_slider_caption_text(edit, "te"), language=None)
             st.download_button("⬇️ Telugu post caption (.txt)", uc.one_slider_caption_text(edit, "te"),
@@ -1194,14 +1246,20 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if st.button("✅ Approve & build the slide (English)", key=f"{kp}_one_build_en", disabled=bool(errs)):
         try:
             st.session_state.pop(f"{kp}_one_png_en", None)
+            st.session_state.pop(f"{kp}_one_editable_en", None)
             st.session_state[f"{kp}_one_en"] = uc.build_one_slider_pptx(edit, "en")
             st.session_state[f"{kp}_one_png_en"] = uc.build_one_slider_png(edit, "en")
+            st.session_state[f"{kp}_one_editable_en"] = uc.build_one_slider_editable_pptx(edit, "en")
         except Exception as e:
             st.error(f"Couldn't build the slide: {e}")
     if f"{kp}_one_en" in st.session_state:
-        st.download_button("⬇️ Download the slide (PowerPoint, editable)", st.session_state[f"{kp}_one_en"],
+        st.download_button("⬇️ Download posting PowerPoint (fixed format)", st.session_state[f"{kp}_one_en"],
                            file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_EN.pptx", key=f"{kp}_one_dl_en",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        if f"{kp}_one_editable_en" in st.session_state:
+            st.download_button("⬇️ Editable PowerPoint (install the bundled fonts)", st.session_state[f"{kp}_one_editable_en"],
+                               file_name=f"CamPen_{edit['topic']}_{edit['day']}_EDITABLE_EN.pptx", key=f"{kp}_one_editable_dl_en",
+                               mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
     if f"{kp}_one_png_en" in st.session_state and f"{kp}_one_en" in st.session_state:
         st.image(st.session_state[f"{kp}_one_png_en"], width=420)
         st.download_button("⬇️ Download Instagram image (PNG)", st.session_state[f"{kp}_one_png_en"],
@@ -1214,6 +1272,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
         for it in [i for i in edit["items"] if i["include"]]:
             st.session_state[f"{kp}_one_te_{it['id']}"] = (it.get("te") or {}).get("text", "")
         st.session_state.pop(f"{kp}_one_te", None)
+        st.session_state.pop(f"{kp}_one_png_te", None)
         st.session_state[f"{kp}_one_tr_problems"] = problems
 
     st.button("🔤 Translate the headlines to Telugu (Sarvam)", key=f"{kp}_one_tr", disabled=client is None,
@@ -1241,13 +1300,16 @@ def render_one_slider(msg: dict, kp: str) -> None:
         for it in [i for i in edit["items"] if i["include"]]:
             it.setdefault("te", {})["text"] = st.session_state.get(f"{kp}_one_te_{it['id']}", "").strip()
         st.session_state.pop(f"{kp}_one_te", None)
+        st.session_state.pop(f"{kp}_one_png_te", None)
         st.success("Telugu saved.")
     te_errs = uc.one_slider_problems(edit, "te")
     if te_errs:
         st.warning("To enable the Telugu build button:\n" + "\n".join(f"- {problem}" for problem in te_errs))
     if st.button("✅ Approve & build the slide (Telugu)", key=f"{kp}_one_build_te", disabled=bool(te_errs)):
         try:
+            st.session_state.pop(f"{kp}_one_editable_te", None)
             st.session_state[f"{kp}_one_te"] = uc.build_one_slider_pptx(edit, "te")
+            st.session_state[f"{kp}_one_editable_te"] = uc.build_one_slider_editable_pptx(edit, "te")
             st.session_state.pop(f"{kp}_one_png_te", None)
             try:
                 st.session_state[f"{kp}_one_png_te"] = uc.build_one_slider_png(edit, "te")
@@ -1256,9 +1318,13 @@ def render_one_slider(msg: dict, kp: str) -> None:
         except Exception as e:
             st.error(f"Couldn't build the Telugu slide: {e}")
     if f"{kp}_one_te" in st.session_state:
-        st.download_button("⬇️ Download the Telugu slide (PowerPoint, editable)", st.session_state[f"{kp}_one_te"],
+        st.download_button("⬇️ Download Telugu posting PowerPoint (fixed format)", st.session_state[f"{kp}_one_te"],
                            file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_TE.pptx", key=f"{kp}_one_dl_te",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        if f"{kp}_one_editable_te" in st.session_state:
+            st.download_button("⬇️ Editable Telugu PowerPoint (install the bundled fonts)", st.session_state[f"{kp}_one_editable_te"],
+                               file_name=f"CamPen_{edit['topic']}_{edit['day']}_EDITABLE_TE.pptx", key=f"{kp}_one_editable_dl_te",
+                               mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
     if f"{kp}_one_png_te" in st.session_state and f"{kp}_one_te" in st.session_state:
         st.image(st.session_state[f"{kp}_one_png_te"], width=420)
         st.download_button("⬇️ Download Telugu Instagram image (PNG)", st.session_state[f"{kp}_one_png_te"],
@@ -1423,8 +1489,8 @@ with st.sidebar:
         st.session_state.trigger_one = (one_topic, one_day)
         st.session_state.trigger_prompt = f"One-slide headlines: {uc.ONE_SLIDER_TOPICS[one_topic]['label']} ({one_day:%d %b %Y})"
         st.rerun()
-    st.caption("Fetch available news, then choose which headlines go on one editable slide. Hyderabad, AP and Telangana: political personalities "
-               "and policy only. Each request searches afresh for the selected IST day. "
+    st.caption("Fetch available news, then choose which headlines go on one editable slide. Hyderabad covers city news. AP and Telangana focus on politics "
+               "and policy. Each request searches afresh for the selected IST day. "
                "Or type e.g. \"Telangana headlines today\", \"sports one slider yesterday\".")
 
     st.divider()
