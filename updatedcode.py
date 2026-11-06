@@ -6868,7 +6868,27 @@ def one_slider_request_day(text: str, default=None):
     return day
 
 
+_ONE_INDIA_FEEDS = (
+    ("The Indian Express — India", "https://indianexpress.com/section/india/feed/"),
+    ("NDTV — Latest", "https://feeds.feedburner.com/ndtvnews-latest"),
+)
 _ONE_SLIDER_FEEDS = {
+    "national": _ONE_INDIA_FEEDS,
+    "ap": _ONE_INDIA_FEEDS + (
+        ("The Hindu — Andhra Pradesh", "https://www.thehindu.com/news/national/andhra-pradesh/feeder/default.rss"),
+    ),
+    "telangana": _ONE_INDIA_FEEDS + (
+        ("The Hindu — Telangana", "https://www.thehindu.com/news/national/telangana/feeder/default.rss"),
+        ("The Siasat Daily — Telangana", "https://www.siasat.com/news/telangana/feed/"),
+    ),
+    "sports": (
+        ("The Indian Express — Sports", "https://indianexpress.com/section/sports/feed/"),
+        ("The Indian Express — Entertainment", "https://indianexpress.com/section/entertainment/feed/"),
+    ),
+    "biztech": (
+        ("The Indian Express — Business", "https://indianexpress.com/section/business/feed/"),
+        ("The Indian Express — Technology", "https://indianexpress.com/section/technology/feed/"),
+    ),
     "hyderabad": (
         ("The Indian Express — Hyderabad", "https://indianexpress.com/section/cities/hyderabad/feed/"),
         ("The Siasat Daily — Hyderabad", "https://www.siasat.com/news/hyderabad/feed/"),
@@ -6899,7 +6919,7 @@ def _one_publisher_articles(label, url):
                 "headline": headline, "source": label.split(" — ", 1)[0],
                 "date": published.isoformat(), "url": link,
                 "date_parsed": published.astimezone(timezone.utc).replace(tzinfo=None),
-                "local_section": label.endswith(" — Hyderabad"),
+                "publisher_section": label.partition(" — ")[2].lower(),
             })
     return articles
 
@@ -6936,17 +6956,21 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
         for label, (got, detail) in zip(searches, ex.map(fetch, searches.values())):
             arts.extend(got)
             status[label] = detail
+    source_failures = sum(detail.startswith("failed:") for detail in status.values())
+    dated_articles = len(arts)
     # Keep the publisher's direct article link when its headline also appeared in search.
-    arts = _dedupe_articles(sorted(arts, key=lambda a: "local_section" not in a))
+    arts = _dedupe_articles(sorted(arts, key=lambda a: "publisher_section" not in a))
     dropped = Counter()
     keep = []
     for a in arts:
         h = a.get("headline", "")
-        if topic != "hyderabad" and cfg["state"] and (is_off_state(h, cfg["state"]) or not _rx(_WRAP_OWN_PLACES[cfg["state"]]).search(h)):
+        if topic != "hyderabad" and cfg["state"] and (is_off_state(h, cfg["state"]) or not (
+            a.get("publisher_section") == cfg["state"] or _rx(_WRAP_OWN_PLACES[cfg["state"]]).search(h)
+        )):
             dropped["about another state or country"] += 1
         elif cfg["political"] and not _ONE_POLITICAL_RX.search(h):
             dropped["not about political personalities or policy"] += 1
-        elif topic == "hyderabad" and not (a.get("local_section") or _HYDERABAD_RX.search(h)):
+        elif topic == "hyderabad" and not (a.get("publisher_section") == "hyderabad" or _HYDERABAD_RX.search(h)):
             dropped["not about Hyderabad"] += 1
         else:
             keep.append(a)
@@ -6996,6 +7020,7 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
             "approver": "", "checked": False, "theme": topic, "show_counts": True, "follow": DECK_FOLLOW_DEFAULT,
             "sources_url": "", "selection_mode": "manual", "candidate_total": len(ranked),
             "candidate_limit": ONE_SLIDER_CANDIDATE_LIMIT,
+            "source_checks": len(searches), "source_failures": source_failures, "dated_articles": dated_articles,
             "fetched_at": f"{utc_now() + IST_OFFSET:%d %b %Y, %H:%M} IST",
             "coverage_window": f"{start + IST_OFFSET:%d %b %Y, %H:%M} – {end + IST_OFFSET:%d %b %Y, %H:%M} IST"}
 
