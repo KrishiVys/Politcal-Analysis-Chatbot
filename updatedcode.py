@@ -6870,7 +6870,7 @@ def one_slider_request_day(text: str, default=None):
 
 _ONE_INDIA_FEEDS = (
     ("The Indian Express — India", "https://indianexpress.com/section/india/feed/"),
-    ("NDTV — Latest", "https://feeds.feedburner.com/ndtvnews-latest"),
+    ("NDTV — India", "https://feeds.feedburner.com/ndtvnews-india-news"),
 )
 _ONE_SLIDER_FEEDS = {
     "national": _ONE_INDIA_FEEDS,
@@ -6944,10 +6944,18 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
 
     def fetch(job):
         load, args = job
-        try:
-            got = load(*args)
-        except Exception as e:
-            return [], f"failed: {_short_error(e)}"
+        for attempt in range(2):
+            try:
+                got = load(*args)
+                break
+            except requests.RequestException as e:
+                retryable = isinstance(e, (requests.ConnectionError, requests.Timeout)) or (
+                    e.response is not None and e.response.status_code in {429, 500, 502, 503, 504}
+                )
+                if attempt or not retryable:
+                    return [], f"failed: {_short_error(e)}"
+            except Exception as e:
+                return [], f"failed: {_short_error(e)}"
         dated = [a for a in got if a.get("date_parsed") is not None and start <= a["date_parsed"] <= end]
         return dated, f"{len(dated)} on selected date ({len(got)} retrieved)"
 
