@@ -34,7 +34,7 @@ import html
 import time
 import contextlib
 import hmac
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import streamlit as st
 
@@ -1075,6 +1075,10 @@ def render_one_slider(msg: dict, kp: str) -> None:
             st.info(f"The sources responded, but returned no dated articles for {edit['day']} (India time).")
         else:
             st.info("No stories passed the topic and article-link checks. See Sources checked for details.")
+        if st.button("Fetch this topic again", key=f"{kp}_one_retry"):
+            st.session_state.trigger_one = (edit["topic"], date.fromisoformat(edit["day"]))
+            st.session_state.trigger_prompt = f"One-slide headlines: {edit['label']} ({edit['day']})"
+            st.rerun()
         with st.expander("🔎 Sources checked"):
             for k, v in edit["status"].items():
                 st.markdown(f"- **{k}:** {v}")
@@ -1347,7 +1351,9 @@ def render_assistant_message(msg: dict, key_prefix: str) -> None:
     """Shared by the live turn and history replay, so widget keys match on reruns
     (that is what makes buttons like "Run fresh" and the downloads work)."""
     if msg.get("kind") == "oneslider":
-        render_one_slider(msg, key_prefix)
+        one = msg["one"]
+        request_key = msg.get("request_id", key_prefix)
+        render_one_slider(msg, f"one_{request_key}_{one['topic']}_{one['day']}")
         return
     if msg.get("kind") == "regional":
         if sd is None:
@@ -1689,7 +1695,9 @@ def run_one_slider_turn(topic: str, day, key_prefix: str) -> None:
         st.error(text)
         st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
         return
-    msg = {"role": "assistant", "kind": "oneslider", "one": one}
+    from uuid import uuid4
+
+    msg = {"role": "assistant", "kind": "oneslider", "one": one, "request_id": uuid4().hex}
     render_assistant_message(msg, key_prefix)
     st.session_state.messages.append(msg)
 
@@ -1805,7 +1813,7 @@ for i, msg in enumerate(st.session_state.messages):
             render_assistant_message(msg, key_prefix=f"msg{i}")
 
 prompt = st.chat_input("Enter a politician or a party (e.g. 'KCR', 'BJP'), or 'daily wrap'...")
-if not prompt and st.session_state.trigger_prompt:
+if st.session_state.trigger_prompt and (not prompt or st.session_state.trigger_one is not None):
     prompt = st.session_state.trigger_prompt
     st.session_state.trigger_prompt = None
 prompt = prompt.strip() if prompt else prompt
