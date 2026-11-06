@@ -6772,14 +6772,16 @@ ONE_SLIDER_TOPICS = {
     "sports": {"label": "Sports / Entertainment News", "chip": "SPORTS", "te_chip": "క్రీడలు", "political": False, "state": None,
                "queries": ['(cricket OR football OR hockey OR badminton OR tennis OR chess OR athletics OR kabaddi) India',
                            '(BCCI OR "Team India" OR Olympic OR medal OR tournament OR championship)',
-                           'India (cinema OR entertainment OR film OR actor OR OTT)']},
+                           'India (cinema OR entertainment OR film OR actor OR OTT)',
+                           'India cricket', 'India sports results', 'Telugu cinema']},
     "national": {"label": "National News", "chip": "NATIONAL", "te_chip": "జాతీయ", "political": False, "state": None,
                  "queries": ['"India" (government OR parliament OR minister OR "Supreme Court" OR election OR Centre)',
                              '(Modi OR "Union Cabinet" OR "Lok Sabha" OR "Rajya Sabha" OR "Election Commission")']},
     "biztech": {"label": "Business/Tech News", "chip": "BUSINESS & TECH", "te_chip": "వ్యాపారం & సాంకేతికత",
                 "political": False, "state": None,
                 "queries": ['(Sensex OR Nifty OR RBI OR economy OR inflation OR GDP OR rupee OR earnings) India',
-                            '("artificial intelligence" OR technology OR ISRO OR startup OR semiconductor OR telecom) India']},
+                            '("artificial intelligence" OR technology OR ISRO OR startup OR semiconductor OR telecom) India',
+                            'India stock market', 'India technology', 'India startup funding']},
 }
 ONE_SLIDER_TOPICS["brief"] = {
     "label": "In Brief", "chip": "IN BRIEF", "te_chip": "సంక్షిప్తంగా", "political": False, "state": None,
@@ -6884,10 +6886,16 @@ _ONE_SLIDER_FEEDS = {
     "sports": (
         ("The Indian Express — Sports", "https://indianexpress.com/section/sports/feed/"),
         ("The Indian Express — Entertainment", "https://indianexpress.com/section/entertainment/feed/"),
+        ("The Hindu — Sport", "https://www.thehindu.com/sport/feeder/default.rss"),
+        ("The Hindu — Entertainment", "https://www.thehindu.com/entertainment/feeder/default.rss"),
+        ("ESPNcricinfo — Cricket", "https://www.espncricinfo.com/rss/content/story/feeds/0.xml"),
     ),
     "biztech": (
         ("The Indian Express — Business", "https://indianexpress.com/section/business/feed/"),
         ("The Indian Express — Technology", "https://indianexpress.com/section/technology/feed/"),
+        ("The Hindu — Business", "https://www.thehindu.com/business/feeder/default.rss"),
+        ("The Hindu — Technology", "https://www.thehindu.com/sci-tech/technology/feeder/default.rss"),
+        ("The Economic Times — Tech", "https://economictimes.indiatimes.com/tech/rssfeeds/13357270.cms"),
     ),
     "hyderabad": (
         ("The Indian Express — Hyderabad", "https://indianexpress.com/section/cities/hyderabad/feed/"),
