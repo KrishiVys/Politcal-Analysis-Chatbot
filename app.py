@@ -1065,7 +1065,16 @@ def render_one_slider(msg: dict, kp: str) -> None:
         edit["caption"] = uc.generate_one_slider_caption(edit)
     st.markdown(f"**📰 {edit['label']} — one-slide headlines · {edit['day']}**")
     if not edit["items"]:
-        st.info("No qualifying headlines found for this topic and day. Try another day or topic.")
+        checks = edit.get("source_checks", 0)
+        failures = edit.get("source_failures", 0)
+        if checks and failures == checks:
+            st.warning("The app could not retrieve any news feeds. Open Sources checked for the errors, then try fetching again.")
+        elif checks and failures:
+            st.warning(f"{failures} of {checks} source checks failed. The sources that responded returned no usable stories for this topic and date.")
+        elif checks and not edit.get("dated_articles"):
+            st.info(f"The sources responded, but returned no dated articles for {edit['day']} (India time).")
+        else:
+            st.info("No stories passed the topic and article-link checks. See Sources checked for details.")
         with st.expander("🔎 Sources checked"):
             for k, v in edit["status"].items():
                 st.markdown(f"- **{k}:** {v}")
