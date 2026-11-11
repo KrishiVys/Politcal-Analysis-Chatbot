@@ -1055,6 +1055,9 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if ek not in st.session_state:
         st.session_state[ek] = _copy.deepcopy(msg["one"])
     edit = st.session_state[ek]
+    edition = edit.get("edition", "daily")
+    edition_suffix = f"_{edition.upper()}" if edition != "daily" else ""
+    slide_label = edit["label"] + (f" · {edition.upper()}" if edition_suffix else "")
     if st.session_state.pop(f"{kp}_one_reset_checked", False):
         st.session_state[f"{kp}_one_checked"] = False
         st.session_state[f"{kp}_one_te_checked"] = False
@@ -1063,7 +1066,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.session_state[f"{kp}_one_approver"] = edit.get("approver", "")
     if not edit.get("caption") and any(i.get("include") for i in edit["items"]):
         edit["caption"] = uc.generate_one_slider_caption(edit)
-    st.markdown(f"**📰 {edit['label']} — one-slide headlines · {edit['day']}**")
+    st.markdown(f"**📰 {slide_label} — one-slide headlines · {edit['day']}**")
     if not edit["items"]:
         checks = edit.get("source_checks", 0)
         failures = edit.get("source_failures", 0)
@@ -1076,8 +1079,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
         else:
             st.info("No stories passed the topic and article-link checks. See Sources checked for details.")
         if st.button("Fetch this topic again", key=f"{kp}_one_retry"):
-            st.session_state.trigger_one = (edit["topic"], date.fromisoformat(edit["day"]))
-            st.session_state.trigger_prompt = f"One-slide headlines: {edit['label']} ({edit['day']})"
+            st.session_state.trigger_one = (edit["topic"], date.fromisoformat(edit["day"]), edition)
+            st.session_state.trigger_prompt = f"One-slide headlines: {slide_label} ({edit['day']})"
             st.rerun()
         with st.expander("🔎 Sources checked"):
             for k, v in edit["status"].items():
@@ -1207,7 +1210,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
                     st.session_state.pop(key, None)
         st.code(uc.one_slider_caption_text(edit), language=None)
         st.download_button("⬇️ English post caption (.txt)", uc.one_slider_caption_text(edit),
-                           file_name=f"CamPen_{edit['topic']}_{edit['day']}_caption_EN.txt", key=f"{kp}_caption_dl")
+                           file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_caption_EN.txt", key=f"{kp}_caption_dl")
         def _translate_caption():
             translated, problems = uc.translate_texts_te(client, [uc.one_slider_caption_text(edit)])
             edit["caption"]["te"] = translated[0] if translated else ""
@@ -1228,7 +1231,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
         if uc.one_slider_caption_text(edit, "te"):
             st.code(uc.one_slider_caption_text(edit, "te"), language=None)
             st.download_button("⬇️ Telugu post caption (.txt)", uc.one_slider_caption_text(edit, "te"),
-                               file_name=f"CamPen_{edit['topic']}_{edit['day']}_caption_TE.txt", key=f"{kp}_caption_dl_te")
+                               file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_caption_TE.txt", key=f"{kp}_caption_dl_te")
 
     with st.expander("🔎 Recheck selected source links", expanded=False):
         st.caption("Checks publisher links and headline overlap. Blocked or mismatched pages need manual review; this does not verify facts.")
@@ -1249,7 +1252,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
                         if uc._source_url_ok(article_url):
                             st.link_button("Open source article", article_url)
         st.download_button("⬇️ Selected sources page (.html)", uc.one_slider_sources_html(edit),
-                           file_name=f"CamPen_{edit['topic']}_{edit['day']}_sources.html", mime="text/html", key=f"{kp}_sources_dl")
+                           file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_sources.html", mime="text/html", key=f"{kp}_sources_dl")
 
     for notice in uc.one_slider_font_warnings(edit):
         st.info(notice)
@@ -1267,16 +1270,16 @@ def render_one_slider(msg: dict, kp: str) -> None:
             st.error(f"Couldn't build the slide: {e}")
     if f"{kp}_one_en" in st.session_state:
         st.download_button("⬇️ Download posting PowerPoint (fixed format)", st.session_state[f"{kp}_one_en"],
-                           file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_EN.pptx", key=f"{kp}_one_dl_en",
+                           file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}{edition_suffix}_EN.pptx", key=f"{kp}_one_dl_en",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
         if f"{kp}_one_editable_en" in st.session_state:
             st.download_button("⬇️ Editable PowerPoint (install the bundled fonts)", st.session_state[f"{kp}_one_editable_en"],
-                               file_name=f"CamPen_{edit['topic']}_{edit['day']}_EDITABLE_EN.pptx", key=f"{kp}_one_editable_dl_en",
+                               file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_EDITABLE_EN.pptx", key=f"{kp}_one_editable_dl_en",
                                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
     if f"{kp}_one_png_en" in st.session_state and f"{kp}_one_en" in st.session_state:
         st.image(st.session_state[f"{kp}_one_png_en"], width=420)
         st.download_button("⬇️ Download Instagram image (PNG)", st.session_state[f"{kp}_one_png_en"],
-                           file_name=f"CamPen_{edit['topic']}_{edit['day']}_EN.png", mime="image/png", key=f"{kp}_one_png_dl_en")
+                           file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_EN.png", mime="image/png", key=f"{kp}_one_png_dl_en")
     st.markdown("**Telugu slide**")
     def _translate_one():
         # Runs BEFORE the page is drawn, so the Telugu boxes can be filled with the new text (Streamlit ignores
@@ -1332,16 +1335,16 @@ def render_one_slider(msg: dict, kp: str) -> None:
             st.error(f"Couldn't build the Telugu slide: {e}")
     if f"{kp}_one_te" in st.session_state:
         st.download_button("⬇️ Download Telugu posting PowerPoint (fixed format)", st.session_state[f"{kp}_one_te"],
-                           file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}_TE.pptx", key=f"{kp}_one_dl_te",
+                           file_name=f"CamPen_{edit['topic']}_headlines_{edit['day']}{edition_suffix}_TE.pptx", key=f"{kp}_one_dl_te",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
         if f"{kp}_one_editable_te" in st.session_state:
             st.download_button("⬇️ Editable Telugu PowerPoint (install the bundled fonts)", st.session_state[f"{kp}_one_editable_te"],
-                               file_name=f"CamPen_{edit['topic']}_{edit['day']}_EDITABLE_TE.pptx", key=f"{kp}_one_editable_dl_te",
+                               file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_EDITABLE_TE.pptx", key=f"{kp}_one_editable_dl_te",
                                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
     if f"{kp}_one_png_te" in st.session_state and f"{kp}_one_te" in st.session_state:
         st.image(st.session_state[f"{kp}_one_png_te"], width=420)
         st.download_button("⬇️ Download Telugu Instagram image (PNG)", st.session_state[f"{kp}_one_png_te"],
-                           file_name=f"CamPen_{edit['topic']}_{edit['day']}_TE.png", mime="image/png", key=f"{kp}_one_png_dl_te")
+                           file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_TE.png", mime="image/png", key=f"{kp}_one_png_dl_te")
     with st.expander("🔎 Sources checked"):
         for k, v in edit["status"].items():
             st.markdown(f"- **{k}:** {v}")
@@ -1494,6 +1497,12 @@ with st.sidebar:
     st.subheader("📰 One-slide headlines")
     _one_keys = list(uc.ONE_SLIDER_TOPICS)
     one_topic = st.selectbox("Topic", _one_keys, format_func=lambda k: uc.ONE_SLIDER_TOPICS[k]["label"], key="opt_one_topic")
+    one_edition = st.segmented_control(
+        "Edition", ("daily", "am", "pm"), default="daily",
+        format_func=lambda edition: {"daily": "Daily", "am": "AM", "pm": "PM"}[edition],
+        help="Choose the artwork for your edition. Headlines are fetched for the selected India date.",
+        key="opt_one_edition",
+    ) or "daily"
     today = uc.ist_today()
     previous_today = st.session_state.get("one_today_marker")
     if previous_today and previous_today != today and st.session_state.get("opt_one_day") == previous_today:
@@ -1501,8 +1510,9 @@ with st.sidebar:
     st.session_state.one_today_marker = today
     one_day = st.date_input("Day (IST)", value=uc.ist_today(), max_value=uc.ist_today(), key="opt_one_day")
     if st.button("📰 Make the one-slide headlines", width="stretch", key="one_btn"):
-        st.session_state.trigger_one = (one_topic, one_day)
-        st.session_state.trigger_prompt = f"One-slide headlines: {uc.ONE_SLIDER_TOPICS[one_topic]['label']} ({one_day:%d %b %Y})"
+        st.session_state.trigger_one = (one_topic, one_day, one_edition)
+        edition_label = f" · {one_edition.upper()}" if one_edition != "daily" else ""
+        st.session_state.trigger_prompt = f"One-slide headlines: {uc.ONE_SLIDER_TOPICS[one_topic]['label']}{edition_label} ({one_day:%d %b %Y})"
         st.rerun()
     st.caption("Fetch available news, then choose which headlines go on one editable slide. Hyderabad covers city news. AP and Telangana focus on politics "
                "and policy. Each request searches afresh for the selected IST day. "
@@ -1680,14 +1690,14 @@ def run_carousel_turn(query: str, day, states: str, key_prefix: str) -> None:
         st.session_state.messages.append({"role": "assistant", "content": text, "error": True})
 
 
-def run_one_slider_turn(topic: str, day, key_prefix: str) -> None:
+def run_one_slider_turn(topic: str, day, key_prefix: str, edition: str = "daily") -> None:
     """A new request always fetches current source results; UI reruns reuse the saved review."""
     st.session_state.force_fresh = False
     placeholder = st.empty()
     log = ProgressLog(placeholder)
     try:
         with contextlib.redirect_stdout(log):
-            one = uc.gather_one_slider(topic, day, client)
+            one = {**uc.gather_one_slider(topic, day, client), "edition": edition}
         placeholder.empty()
     except Exception as e:
         placeholder.empty()
@@ -1853,7 +1863,7 @@ if prompt:
         if _one_date_error:
             st.error(_one_date_error)
         elif one:
-            run_one_slider_turn(one[0], one[1], key_prefix)
+            run_one_slider_turn(one[0], one[1], key_prefix, *one[2:])
         elif reg and reg[0] == "ask-state":
             text = (f"Constituency number {reg[1]} exists in both Andhra Pradesh and Telangana -- which one? "
                     f"Try \"AC {reg[1]} AP\" or \"AC {reg[1]} Telangana\".")
