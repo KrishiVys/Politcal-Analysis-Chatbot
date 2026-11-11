@@ -7556,7 +7556,11 @@ def _one_fit(edit: dict, lang: str):
 
 
 def _one_template_path(edit):
-    path=os.path.join(ONE_SLIDER_ASSETS_DIR,edit["topic"]+".png")
+    edition = edit.get("edition", "daily")
+    if edition not in ("daily", "am", "pm"):
+        raise ValueError("Choose Daily, AM or PM for the one-slider edition.")
+    suffix = "" if edition == "daily" else f"_{edition}"
+    path = os.path.join(ONE_SLIDER_ASSETS_DIR, f"{edit['topic']}{suffix}.png")
     if not os.path.isfile(path):
         raise RuntimeError("The one_slider_assets folder is missing or incomplete. Extract the complete update ZIP beside app.py and updatedcode.py.")
     return path
