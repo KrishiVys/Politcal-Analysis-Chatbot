@@ -1067,6 +1067,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if not edit.get("caption") and any(i.get("include") for i in edit["items"]):
         edit["caption"] = uc.generate_one_slider_caption(edit)
     st.markdown(f"**📰 {slide_label} — one-slide headlines · {edit['day']}**")
+    if edit.get("coverage_window"):
+        st.caption("News window: " + edit["coverage_window"])
     if not edit["items"]:
         checks = edit.get("source_checks", 0)
         failures = edit.get("source_failures", 0)
@@ -1075,7 +1077,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
         elif checks and failures:
             st.warning(f"{failures} of {checks} source checks failed. The sources that responded returned no usable stories for this topic and date.")
         elif checks and not edit.get("dated_articles"):
-            st.info(f"The sources responded, but returned no dated articles for {edit['day']} (India time).")
+            st.info("The sources responded, but returned no dated articles in this news window.")
         else:
             st.info("No stories passed the topic and article-link checks. See Sources checked for details.")
         if st.button("Fetch this topic again", key=f"{kp}_one_retry"):
@@ -1091,8 +1093,6 @@ def render_one_slider(msg: dict, kp: str) -> None:
     st.caption("A maximum of 10 distinct news stories is offered for each one-slider request.")
     st.caption("Tick your news, then use Save & rewrite for posting to polish only the selected headlines. "
                "Compare the rewrites with the source, review and approve, then translate to Telugu if needed.")
-    if edit.get("coverage_window"):
-        st.caption("News window: " + edit["coverage_window"])
     if edit.get("fetched_at"):
         st.caption("News fetched: " + edit["fetched_at"])
     posting_height=round(uc.ONE_SLIDER_TEMPLATE_LAYOUTS[edit["topic"]]["height"]*1080/810)
@@ -1500,7 +1500,7 @@ with st.sidebar:
     one_edition = st.segmented_control(
         "Edition", ("daily", "am", "pm"), default="daily",
         format_func=lambda edition: {"daily": "Daily", "am": "AM", "pm": "PM"}[edition],
-        help="Choose the artwork for your edition. Headlines are fetched for the selected India date.",
+        help="India time. PM covers 5 a.m. to 5 p.m. on the selected date. AM covers 5 p.m. the previous day to 5 a.m. on the selected date.",
         key="opt_one_edition",
     ) or "daily"
     today = uc.ist_today()
@@ -1515,7 +1515,7 @@ with st.sidebar:
         st.session_state.trigger_prompt = f"One-slide headlines: {uc.ONE_SLIDER_TOPICS[one_topic]['label']}{edition_label} ({one_day:%d %b %Y})"
         st.rerun()
     st.caption("Fetch available news, then choose which headlines go on one editable slide. Hyderabad covers city news. AP and Telangana focus on politics "
-               "and policy. Each request searches afresh for the selected IST day. "
+               "and policy. Each request searches afresh for the selected edition and date. "
                "Or type e.g. \"Telangana headlines today\", \"sports one slider yesterday\".")
 
     st.divider()
@@ -1697,7 +1697,10 @@ def run_one_slider_turn(topic: str, day, key_prefix: str, edition: str = "daily"
     log = ProgressLog(placeholder)
     try:
         with contextlib.redirect_stdout(log):
-            one = {**uc.gather_one_slider(topic, day, client), "edition": edition}
+            if edition == "daily":
+                one = uc.gather_one_slider(topic, day, client)
+            else:
+                one = uc.gather_one_slider(topic, day, client, edition=edition)
         placeholder.empty()
     except Exception as e:
         placeholder.empty()
@@ -1707,7 +1710,7 @@ def run_one_slider_turn(topic: str, day, key_prefix: str, edition: str = "daily"
         return
     from uuid import uuid4
 
-    msg = {"role": "assistant", "kind": "oneslider", "one": one, "request_id": uuid4().hex}
+    msg = {"role": "assistant", "kind": "oneslider", "one": {**one, "edition": edition}, "request_id": uuid4().hex}
     render_assistant_message(msg, key_prefix)
     st.session_state.messages.append(msg)
 
