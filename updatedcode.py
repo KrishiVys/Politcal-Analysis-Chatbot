@@ -592,7 +592,10 @@ def get_google_news_fallback(
         date_parsed = None
         if date_el is not None and date_el.text:
             try:
-                date_parsed = parsedate_to_datetime(date_el.text).replace(tzinfo=None)
+                published = parsedate_to_datetime(date_el.text)
+                if published.tzinfo is not None:
+                    published = published.astimezone(timezone.utc)
+                date_parsed = published.replace(tzinfo=None)
             except (TypeError, ValueError):
                 pass
 
@@ -6932,14 +6935,26 @@ def _one_publisher_articles(label, url):
     return articles
 
 
-def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MODEL) -> dict:
+def one_slider_edition_window(day, edition: str = "daily"):
+    """Return the inclusive start and exclusive end as naive UTC timestamps."""
+    midnight, _ = ist_day_window(day)
+    if edition == "am":
+        return midnight - timedelta(hours=7), midnight + timedelta(hours=5)
+    if edition == "pm":
+        return midnight + timedelta(hours=5), midnight + timedelta(hours=17)
+    if edition == "daily":
+        return midnight, midnight + timedelta(days=1)
+    raise ValueError("Choose Daily, AM or PM for the one-slider edition.")
+
+
+def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MODEL, *, edition: str = "daily") -> dict:
     """Retrieved, source-linked news candidates; the editor selects the final slide."""
     from concurrent.futures import ThreadPoolExecutor
     cfg = ONE_SLIDER_TOPICS[topic]
     day = day or ist_today()
     validate_wrap_range(day, day)
-    start, end = ist_day_window(day)
-    # Daily means the selected IST calendar day, never yesterday's stories as filler.
+    start, end = one_slider_edition_window(day, edition)
+    # Keep the search query broad enough to cover both dates for an overnight edition.
     window = f"after:{(day - timedelta(days=1)):%Y-%m-%d} before:{(day + timedelta(days=1)):%Y-%m-%d}"
     status = {}
 
@@ -6964,8 +6979,8 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
                     return [], f"failed: {_short_error(e)}"
             except Exception as e:
                 return [], f"failed: {_short_error(e)}"
-        dated = [a for a in got if a.get("date_parsed") is not None and start <= a["date_parsed"] <= end]
-        return dated, f"{len(dated)} on selected date ({len(got)} retrieved)"
+        dated = [a for a in got if a.get("date_parsed") is not None and start <= a["date_parsed"] < end]
+        return dated, f"{len(dated)} in news window ({len(got)} retrieved)"
 
     arts = []
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -7031,14 +7046,14 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
     status["Headlines"] = (f"{len(items)} of {len(ranked)} retrieved stories offered (maximum {ONE_SLIDER_CANDIDATE_LIMIT}); "
                            "none selected automatically (pending editorial checks)"
                            + (f"; left out: " + ", ".join(f"{n} {why}" for why, n in dropped.items()) if dropped else ""))
-    return {"topic": topic, "label": cfg["label"], "chip": cfg["chip"], "day": day.isoformat(), "items": items,
+    return {"topic": topic, "edition": edition, "label": cfg["label"], "chip": cfg["chip"], "day": day.isoformat(), "items": items,
             "title": ONE_SLIDER_TITLE["en"], "te": {}, "status": status, "used_ai": used_ai,
             "approver": "", "checked": False, "theme": topic, "show_counts": True, "follow": DECK_FOLLOW_DEFAULT,
             "sources_url": "", "selection_mode": "manual", "candidate_total": len(ranked),
             "candidate_limit": ONE_SLIDER_CANDIDATE_LIMIT,
             "source_checks": len(searches), "source_failures": source_failures, "dated_articles": dated_articles,
             "fetched_at": f"{utc_now() + IST_OFFSET:%d %b %Y, %H:%M} IST",
-            "coverage_window": f"{start + IST_OFFSET:%d %b %Y, %H:%M} – {end + IST_OFFSET:%d %b %Y, %H:%M} IST"}
+            "coverage_window": f"{start + IST_OFFSET:%d %b %Y, %H:%M} to {end + IST_OFFSET:%d %b %Y, %H:%M} IST (end exclusive)"}
 
 
 def _one_rewrite_problem(item, text, edit):
