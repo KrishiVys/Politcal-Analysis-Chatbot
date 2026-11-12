@@ -7084,7 +7084,7 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
                    key=lambda it: len(it.get("headline", "")))
         original = _clean_headline(best.get("headline", ""), best.get("source", ""))
         text = original  # Only a published headline; editing is an explicit editorial action.
-        items.append({"id": s["cid"], "text": text, "original": original, "summary": [], "outlets": s["outlets"],
+        items.append({"id": s["cid"], "text": text, "original": original, "needs_original_headline": True, "summary": [], "outlets": s["outlets"],
                       "source_headlines": list(dict.fromkeys(it.get("headline", "") for it in available if it.get("headline")))[:4],
                       "links": [{"name": r["name"], "url": r["url"]} for r in s["links"][:6]],
                       "n_established": s["n_established"], "include": False, "te": {}, "tag": suggest_tag(original),
@@ -7109,10 +7109,18 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
             "coverage_window": f"{start + IST_OFFSET:%d %b %Y, %H:%M} to {end + IST_OFFSET:%d %b %Y, %H:%M} IST (end exclusive)"}
 
 
+def one_slider_has_original_wording(item: dict, headline: str) -> bool:
+    """Detect copied headlines even if case or punctuation changes."""
+    normalized = re.findall(r"\w+", headline.casefold())
+    source_headlines = [item.get("original", ""), *item.get("source_headlines", [])]
+    return any(normalized == re.findall(r"\w+", source.casefold()) for source in source_headlines if source)
+
+
 def _one_rewrite_problem(item, text, edit):
     """Conservative editorial checks; the editor still reviews against the linked source."""
     source=item.get("original") or item.get("text","")
     if not isinstance(text,str) or not text.strip():return "No usable headline returned."
+    if one_slider_has_original_wording(item, text):return "Rewrite the wording; this matches a publisher headline."
     if text.endswith('?'):return "Question-style headline needs rewriting."
     if _numbers(text)!=_numbers(source):return "A source figure was changed or omitted."
     units=r"\b(?:crores?|lakhs?|millions?|billions?|trillions?|thousands?|percent|percentage|kilometres?|kilometers?|km|rupees?|dollars?|rs)\b|[%₹$€]"
@@ -7144,15 +7152,21 @@ def _one_rewrite_problem(item, text, edit):
     return ""
 
 
-def rewrite_one_slider_headlines(edit: dict,client,model: str = DEFAULT_MODEL) -> dict:
+def rewrite_one_slider_headlines(edit: dict,client,model: str = DEFAULT_MODEL, *, source_copies_only=False) -> dict:
     """Polish the editor's selected stories, without selecting news or resizing fonts."""
     selected=[item for item in edit["items"] if item.get("include")]
     if not selected:raise ValueError("Select at least one headline to rewrite.")
     if len(selected)>ONE_SLIDER_MAX:raise ValueError("Choose up to four headlines before rewriting.")
+    if source_copies_only:
+        selected = [item for item in selected if item.get("needs_original_headline")
+                    and one_slider_has_original_wording(item, item["text"])]
+        if not selected:
+            return {"selected": 0, "rewritten": 0, "changed": []}
+
     if client is None:raise ValueError("Connect Sarvam to rewrite headlines, or edit them manually.")
     system=("You edit headlines for an Indian daily news post. Rewrite ONLY the selected source-linked stories. "
             "Use concise, grammatical sentence case with a clear subject and verb, suitable for posting. "
-            "Use only the source headline facts. Keep all names, figures, units, dates, attribution, denials, "
+            "Write a distinct headline with different wording or sentence structure. Do not copy any publisher headline. Use only the source headline facts. Keep all names, figures, units, dates, attribution, denials, "
             "allegations and uncertainty. Do not expand initials into guessed names. Preserve the exact action "
             "and whether it is planned, ongoing or completed. No added facts, inferred outcomes, sensationalism, "
             "Avoid clickbait and question headlines. Preserve the complete meaning regardless of length. "
@@ -7381,6 +7395,9 @@ def one_slider_problems(edit: dict, lang: str = "en") -> list:
     if any(not i["text"].strip() for i in inc):
         errs.append("A ticked headline is empty.")
     for item in inc:
+        if item.get("needs_original_headline") and one_slider_has_original_wording(item, item["text"]):
+            errs.append(f"{item['id']}: rewrite the headline in your own words before building the slide.")
+    for item in inc:
         if "summary" not in item:
             continue  # Drafts saved before summaries were introduced can still be exported.
         points = item["summary"] if lang == "en" else (item.get("te") or {}).get("summary", [])
@@ -7572,6 +7589,45 @@ def _one_wrap(text,size,width,key,bold=True):
     return lines
 
 
+_ONE_STORY_PANEL_LEFT = {
+    "hyderabad": 271, "ap": 250, "telangana": 240, "national": 241,
+    "biztech": 266, "sports": 263, "brief": 102,
+}
+
+
+def _one_story_panel(topic: str, count: int):
+    layout = ONE_SLIDER_TEMPLATE_LAYOUTS[topic]
+    top = layout["ys"][0] - 15
+    bottom = min(layout["source"][1] - 7, layout["ys"][-1] + layout["row_h"] + 10)
+    return _ONE_STORY_PANEL_LEFT[topic], top, bottom, (bottom - top) / max(1, count)
+
+
+def _one_slider_background(edit):
+    """Retain the supplied art and rebuild its story rules and badges for the selection."""
+    from PIL import Image, ImageDraw, ImageStat
+
+    image = Image.open(_one_template_path(edit)).convert("RGB")
+    scale = image.width / 810
+    topic = edit["topic"]
+    layout = ONE_SLIDER_TEMPLATE_LAYOUTS[topic]
+    count = sum(bool(item.get("include")) for item in edit["items"])
+    left, top, bottom, height = _one_story_panel(topic, count)
+    center_x = layout["nx"] + 20
+    sample_x, sample_y = layout["x"] + 20, layout["ys"][0] + 25
+    patch = image.crop(tuple(round(p * scale) for p in (sample_x, sample_y, sample_x + 30, sample_y + 20)))
+    paper = tuple(round(c) for c in ImageStat.Stat(patch).median)
+    badge = image.getpixel((round(center_x * scale), round((layout["ny"][0] + 21) * scale)))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((left * scale, top * scale, image.width, bottom * scale), fill=paper)
+    for n in range(count):
+        row = top + n * height
+        center_y = row + height / 2
+        if n:
+            draw.line((left * scale, row * scale, image.width, row * scale), fill=badge, width=max(1, round(scale)))
+        draw.ellipse(tuple(p * scale for p in (center_x - 22, center_y - 22, center_x + 22, center_y + 22)), fill=badge)
+    return image
+
+
 def _one_template_plan(edit: dict,lang="en") -> list:
     layout=ONE_SLIDER_TEMPLATE_LAYOUTS[edit["topic"]]
     styles=ONE_SLIDER_FONT_DEFAULTS[edit["topic"]]
@@ -7595,16 +7651,20 @@ def _one_template_plan(edit: dict,lang="en") -> list:
     fit("Subtitle",subtitle.rstrip("."),layout["subtitle"],styles["subtitle"],telugu=lang=="te")
     items=[item for item in edit["items"] if item.get("include")]
     if len(items)>ONE_SLIDER_MAX:raise ValueError("Choose up to four headlines for one slide.")
+    _, panel_top, _, row_span = _one_story_panel(edit["topic"], len(items))
+    preferred_scale = {1: 2.5, 2: 1.8, 3: 1.4, 4: 1.12}.get(len(items), 1)
     for n,item in enumerate(items):
+        row_top = panel_top + n * row_span
         text=(item.get("te") or {}).get("text","") if lang=="te" else item["text"]
         if not text.strip():raise ValueError(f"Headline {n+1}: save the {'Telugu translation' if lang=='te' else 'headline text'} first.")
         link=next((l["url"] for l in item.get("links",[]) if _source_url_ok(l.get("url",""))),"")
         points = ((item.get("te") or {}) if lang == "te" else item).get("summary", [])
         head_key, head_size, color = styles["head"]
         summary = "\n".join(f"• {point}" for point in points)
-        row_y, row_height = layout["ys"][n], layout["row_h"]
-        # Fit the complete headline and its points together in the existing story row.
-        for scale in (1, .9, .8, .72, .64, .56, .48, .4):
+        row_y, row_height = row_top + 10, row_span - 20
+        # Use a descending size ladder so a long word cannot force a large jump in size.
+        for step in range(round((preferred_scale - .4) / .06) + 1):
+            scale = max(.4, preferred_scale - step * .06)
             try:
                 fit(f"Headline {n+1}", text, (layout["x"], row_y, layout["w"], row_height),
                     (head_key, head_size * scale, color), link=link, center=not points,
@@ -7618,12 +7678,17 @@ def _one_template_plan(edit: dict,lang="en") -> list:
                     except ValueError:
                         entries.pop()
                         raise
+                if points:
+                    headline, details = entries[-2:]
+                    offset = max(0, (row_height - (details["y"] + details["h"] - row_y)) / 2)
+                    headline["y"] += offset
+                    details["y"] += offset
                 break
             except ValueError:
                 continue
         else:
             raise ValueError(f"Story {n+1} exceeds the available slide space at the minimum text size.")
-        fit(f"Number {n+1}",str(n+1),(layout["nx"],layout["ny"][n],40,42),styles["number"],align="center",center=True)
+        fit(f"Number {n+1}",str(n+1),(layout["nx"],row_top + row_span / 2 - 21,40,42),styles["number"],align="center",center=True)
     names=list(dict.fromkeys(l["name"] for item in items for l in item.get("links",[]) if l.get("name")))
     if names:
         prefix="మూలాలు: " if lang=="te" else "Sources: "
@@ -7686,7 +7751,6 @@ def build_one_slider_editable_pptx(edit: dict, lang: str = "en") -> bytes:
     """Topic artwork with editable daily copy; source URLs remain in the speaker notes."""
     if Presentation is None:
         raise RuntimeError("python-pptx isn't installed. Run: pip install python-pptx")
-    path=_one_template_path(edit)
     errs=one_slider_problems(edit,lang)
     if errs:
         raise ValueError("Not ready:\n- "+"\n- ".join(errs))
@@ -7695,7 +7759,10 @@ def build_one_slider_editable_pptx(edit: dict, lang: str = "en") -> bytes:
     prs=Presentation()
     prs.slide_width,prs.slide_height=Pt(810),Pt(layout["height"])
     slide=prs.slides.add_slide(prs.slide_layouts[6])
-    _deck_set_background(slide,path)
+    background = _io.BytesIO()
+    _one_slider_background(edit).save(background, "PNG")
+    background.seek(0)
+    _deck_set_background(slide,background)
     for entry in plan:
         box=slide.shapes.add_textbox(Pt(entry["x"]),Pt(entry["y"]),Pt(entry["w"]),Pt(entry["h"]))
         box.name=entry["name"]
@@ -7752,7 +7819,7 @@ def build_one_slider_png(edit: dict, lang: str = "en") -> bytes:
     errs=one_slider_problems(edit,lang)
     if errs:raise ValueError("Not ready:\n- "+"\n- ".join(errs))
     plan=_one_checked_plan(edit,lang)
-    image=Image.open(_one_template_path(edit)).convert("RGB")
+    image=_one_slider_background(edit)
     scale=image.width/810
     draw=ImageDraw.Draw(image)
     for entry in plan:
