@@ -7608,7 +7608,7 @@ def one_slider_problems(edit: dict, lang: str = "en") -> list:
     if inc and len(inc) <= ONE_SLIDER_MAX:
         try:
             _one_template_plan(edit, lang)
-        except (ValueError, KeyError) as exc:
+        except (ValueError, KeyError, RuntimeError) as exc:
             errs.append(str(exc))
     if not edit.get("checked"):
         errs.append("Confirm the headlines were checked against the linked sources.")
@@ -7753,13 +7753,83 @@ def _one_font_path(key):
     raise ValueError(f"Template font {key} is missing. Upload the updated one_slider_assets/fonts folder.")
 
 
+class _OneSliderTeluguFont:
+    """Shape Telugu with HarfBuzz when Pillow has no RAQM support."""
+
+    def __init__(self, path, size):
+        try:
+            import freetype
+            import uharfbuzz as hb
+        except ImportError as exc:
+            raise RuntimeError("Telugu export needs Pillow with RAQM or both uharfbuzz and freetype-py installed.") from exc
+        self.hb = hb
+        self.path = path
+        self.size = size
+        self.freetype = freetype
+        with open(path, "rb") as source:
+            self.font = hb.Font(hb.Face(source.read()))
+        self.font.scale = (size * 64, size * 64)
+
+    def _positions(self, text):
+        buffer = self.hb.Buffer()
+        buffer.add_str(text)
+        buffer.direction = "ltr"
+        buffer.script = "Telu"
+        buffer.language = "te"
+        self.hb.shape(self.font, buffer)
+        x = 0
+        positions = []
+        for info, position in zip(buffer.glyph_infos, buffer.glyph_positions):
+            positions.append((info.codepoint, (x + position.x_offset) / 64, position.y_offset / 64))
+            x += position.x_advance
+        return positions, x / 64
+
+    def getlength(self, text):
+        return self._positions(text)[1]
+
+    def getbbox(self, text, anchor="ls"):
+        positions, advance = self._positions(text)
+        left, top, right, bottom = 0, 0, advance, 0
+        for glyph, x, y in positions:
+            bounds = self.font.get_glyph_extents(glyph)
+            if bounds is None or not bounds.height:
+                continue
+            left = min(left, x + bounds.x_bearing / 64)
+            top = min(top, -y - bounds.y_bearing / 64)
+            right = max(right, x + (bounds.x_bearing + bounds.width) / 64)
+            bottom = max(bottom, -y - (bounds.y_bearing + bounds.height) / 64)
+        return left, top, right, bottom
+
+    def paint(self, image, text, x, baseline, color):
+        from PIL import Image
+        face = self.freetype.Face(self.path)
+        face.set_pixel_sizes(0, self.size)
+        positions, _ = self._positions(text)
+        for glyph, dx, dy in positions:
+            face.load_glyph(glyph, self.freetype.FT_LOAD_RENDER)
+            slot = face.glyph
+            bitmap = slot.bitmap
+            if not bitmap.width or not bitmap.rows:
+                continue
+            mask = Image.frombytes("L", (bitmap.width, bitmap.rows), bytes(bitmap.buffer),
+                                   "raw", "L", abs(bitmap.pitch), 1 if bitmap.pitch > 0 else -1)
+            left = round(x + dx) + slot.bitmap_left
+            top = round(baseline - dy) - slot.bitmap_top
+            image.paste(color, (left, top, left + bitmap.width, top + bitmap.rows), mask)
+
+
 def _one_template_font(key,size,scale=4):
-    from PIL import ImageFont
-    path=_one_font_path(key)
-    cache_key=(path,os.stat(path).st_mtime_ns,round(size*scale))
+    from PIL import ImageFont, features
+    path = _one_font_path(key)
+    pixels = max(1, round(size * scale))
+    cache_key = (path, os.stat(path).st_mtime_ns, pixels)
     if cache_key not in _ONE_FONT_CACHE:
-        if len(_ONE_FONT_CACHE)>256:_ONE_FONT_CACHE.clear()
-        _ONE_FONT_CACHE[cache_key]=ImageFont.truetype(path,max(1,round(size*scale)))
+        if len(_ONE_FONT_CACHE) > 256:
+            _ONE_FONT_CACHE.clear()
+        if key.startswith("NotoSansTelugu-") and not features.check_feature("raqm"):
+            _ONE_FONT_CACHE[cache_key] = _OneSliderTeluguFont(path, pixels)
+        else:
+            _ONE_FONT_CACHE[cache_key] = ImageFont.truetype(path, pixels)
     return _ONE_FONT_CACHE[cache_key]
 
 
@@ -7839,12 +7909,20 @@ def _one_template_plan(edit: dict,lang="en") -> list:
             key="NotoSansTelugu-SemiBold" if "SemiBold" in key else "NotoSansTelugu-Bold"
         lines=_one_wrap(text,size,w,key)
         line_height=line_height or size*1.2
-        text_h=(len(lines)-1)*line_height+size*1.2 if lines is not None else float("inf")
+        ink_top = None
+        ink_height = size * 1.2
+        if telugu and lines:
+            font = _one_template_font(key, size)
+            bounds = [font.getbbox(line, anchor="ls") for line in lines]
+            ink_top = min(box[1] for box in bounds) / 4
+            ink_height = max(box[3] for box in bounds) / 4 - ink_top
+            line_height = max(line_height, ink_height + size * .15)
+        text_h = (len(lines) - 1) * line_height + ink_height if lines is not None else float("inf")
         if lines is None or text_h>h:
             raise ValueError(f"{name} does not fit at the template's fixed {size:g} pt size. Shorten this text or choose another headline; the font will not be reduced.")
         entries.append(dict(name=name,text="\n".join(lines),x=x,y=y+(h-text_h)/2 if center else y,
                             w=w,h=text_h+2,size=size,kind=key,bold="SemiBold" not in key,
-                            font_name=ONE_SLIDER_FONT_FAMILIES[key],align=align,color=color,link=link,line_height=line_height))
+                            font_name=ONE_SLIDER_FONT_FAMILIES[key],align=align,color=color,link=link,line_height=line_height,ink_top=ink_top))
     fit("Date",datetime.strptime(edit["day"],"%Y-%m-%d").strftime("%d %b %Y").upper(),
         layout["date"],styles["date"],align="right" if edit["topic"]!="ap" else "left")
     subtitle=((edit.get("te") or {}).get("title") or ONE_SLIDER_TITLE["te"]) if lang=="te" else edit.get("title") or ONE_SLIDER_TITLE["en"]
@@ -8015,7 +8093,7 @@ def build_one_slider_pptx(edit: dict, lang: str = "en", editable: bool = False) 
 
 def build_one_slider_png(edit: dict, lang: str = "en") -> bytes:
     """Instagram-ready image rendered from exactly the same text plan as PowerPoint."""
-    from PIL import Image,ImageDraw,ImageFont
+    from PIL import ImageColor, ImageDraw
     errs=one_slider_problems(edit,lang)
     if errs:raise ValueError("Not ready:\n- "+"\n- ".join(errs))
     plan=_one_checked_plan(edit,lang)
@@ -8024,11 +8102,21 @@ def build_one_slider_png(edit: dict, lang: str = "en") -> bytes:
     draw=ImageDraw.Draw(image)
     for entry in plan:
         font=_one_template_font(entry["kind"],entry["size"],scale)
+        color = "#" + entry["color"]
         for i,line in enumerate(entry["text"].split("\n")):
             x=entry["x"]*scale
-            if entry["align"]=="right":x+=entry["w"]*scale-draw.textlength(line,font=font)
-            elif entry["align"]=="center":x+=(entry["w"]*scale-draw.textlength(line,font=font))/2
-            draw.text((x,(entry["y"]+i*entry["line_height"])*scale),line,font=font,fill="#"+entry["color"],anchor="lt")
+            advance = font.getlength(line)
+            if entry["align"]=="right":x+=entry["w"]*scale-advance
+            elif entry["align"]=="center":x+=(entry["w"]*scale-advance)/2
+            y = (entry["y"] + i * entry["line_height"]) * scale
+            if entry["ink_top"] is None:
+                draw.text((x,y),line,font=font,fill=color,anchor="lt")
+            else:
+                baseline = y - entry["ink_top"] * scale
+                if isinstance(font, _OneSliderTeluguFont):
+                    font.paint(image, line, x, baseline, ImageColor.getrgb(color))
+                else:
+                    draw.text((x,baseline),line,font=font,fill=color,anchor="ls")
     buf=_io.BytesIO();image.save(buf,"PNG")
     return buf.getvalue()
 
