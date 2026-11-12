@@ -1351,6 +1351,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
         total = sum(1 for i in edit["items"] if i["include"])
         (st.success if done == total else st.warning)(f"Translated {done} of {total} headlines -- check them below.")
         show_translation_problems(problems)
+    st.caption("Use the Telugu PNG or fixed-format PowerPoint for posting. Editable PowerPoint uses the Noto Sans Telugu fonts on the device that opens it.")
     telugu_check_ui(f"{kp}_one")
     if client is None:
         st.caption("Translating needs a Sarvam API key; you can also type the Telugu yourself below.")
