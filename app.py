@@ -1097,6 +1097,13 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.caption("News fetched: " + edit["fetched_at"])
     posting_height=round(uc.ONE_SLIDER_TEMPLATE_LAYOUTS[edit["topic"]]["height"]*1080/810)
     st.caption(f"Original template size: 1080 × {posting_height} pixels. Use the posting PNG or fixed-format PowerPoint; preserve its dimensions when importing.")
+    def _save_summary(item, state):
+        points = uc.one_slider_summary_points(state.get(f"{kp}_one_summary_{item['id']}", ""))
+        if points != item.get("summary", []):
+            item["summary"] = points
+            (item.get("te") or {}).pop("summary", None)
+            state.pop(f"{kp}_one_te_summary_{item['id']}", None)
+
     def _save_and_rewrite():
         ss = st.session_state
         edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
@@ -1107,6 +1114,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
                 item["te"] = {}
                 ss.pop(f"{kp}_one_te_{item['id']}", None)
             item["text"] = draft
+            _save_summary(item, ss)
         edit["approver"] = ss.get(f"{kp}_one_approver", edit.get("approver", "")).strip()
         edit["checked"] = False
         try:
@@ -1117,6 +1125,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
                 ss[f"{kp}_one_txt_{item['id']}"] = item["text"]
                 if item["id"] in report["changed"]:
                     ss.pop(f"{kp}_one_te_{item['id']}", None)
+                    ss.pop(f"{kp}_one_te_summary_{item['id']}", None)
             if edit.get("caption"):
                 ss[f"{kp}_caption_en"] = edit["caption"]["text"]
                 ss[f"{kp}_caption_te"] = edit["caption"].get("te", "")
@@ -1129,20 +1138,22 @@ def render_one_slider(msg: dict, kp: str) -> None:
         ss[f"{kp}_one_te_approver"] = edit["approver"]
 
     with st.form(f"{kp}_one_form"):
-        st.caption("Template font, weight, colour and point size are fixed to the supplied design. Long headlines must be edited to fit; fonts are not reduced.")
+        st.caption("Add two or three source-checked summary points per story, one per line. The slide fits the complete headline and points together.")
         st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
         for it in edit["items"]:
             c1, c2 = st.columns([1, 11])
             c1.checkbox("Use", it["include"], key=f"{kp}_one_inc_{it['id']}")
             c2.text_input(f"Headline {it['id']}", it["text"], key=f"{kp}_one_txt_{it['id']}",
                           label_visibility="collapsed")
+            c2.text_area(f"Summary points for {it['id']}", "\n".join(it.get("summary", [])),
+                         key=f"{kp}_one_summary_{it['id']}", placeholder="Enter one source-checked point per line")
             if it.get("published"):
                 c2.caption("Published: " + it["published"])
             c2.caption(f"{it['verification']} · " + " · ".join(f"[{l['name']}]({l['url']})" for l in it["links"][:4])
                        + (f" · outlet headline: “{it['original']}”" if it["original"] != it["text"] else ""))
             if it.get("rewrite_status"):
                 c2.caption(it["rewrite_status"])
-        st.checkbox("I checked these headlines against the linked sources", edit["checked"], key=f"{kp}_one_checked")
+        st.checkbox("I checked the headlines and summaries against the linked sources", edit["checked"], key=f"{kp}_one_checked")
         st.text_input("Approving editor", edit["approver"], key=f"{kp}_one_approver")
         saved = st.form_submit_button("💾 Save")
         st.form_submit_button("✍️ Save & rewrite for posting", key=f"{kp}_one_rewrite",
@@ -1159,8 +1170,10 @@ def render_one_slider(msg: dict, kp: str) -> None:
             new = ss.get(f"{kp}_one_txt_{it['id']}", it["text"]).strip()
             if new != it["text"]:
                 it["te"] = {}                     # an edited headline needs translating again
-                ss.pop(f"{kp}_one_te_{it['id']}", None)   # and its old Telugu must not be saved back
+                ss.pop(f"{kp}_one_te_{it['id']}", None)
+                ss.pop(f"{kp}_one_te_summary_{it['id']}", None)
             it["text"] = new
+            _save_summary(it, ss)
         edit["checked"] = bool(ss.get(f"{kp}_one_checked", edit["checked"]))
         edit["approver"] = ss.get(f"{kp}_one_approver", edit["approver"]).strip()
         if previous_signature != uc.one_slider_signature(edit) and previous_checked:
@@ -1287,11 +1300,12 @@ def render_one_slider(msg: dict, kp: str) -> None:
         problems = uc.translate_one_slider(edit, client)
         for it in [i for i in edit["items"] if i["include"]]:
             st.session_state[f"{kp}_one_te_{it['id']}"] = (it.get("te") or {}).get("text", "")
+            st.session_state[f"{kp}_one_te_summary_{it['id']}"] = "\n".join((it.get("te") or {}).get("summary", []))
         st.session_state.pop(f"{kp}_one_te", None)
         st.session_state.pop(f"{kp}_one_png_te", None)
         st.session_state[f"{kp}_one_tr_problems"] = problems
 
-    st.button("🔤 Translate the headlines to Telugu (Sarvam)", key=f"{kp}_one_tr", disabled=client is None,
+    st.button("🔤 Translate headlines and summaries to Telugu (Sarvam)", key=f"{kp}_one_tr", disabled=client is None,
               on_click=_translate_one)
     if f"{kp}_one_tr_problems" in st.session_state:
         problems = st.session_state.pop(f"{kp}_one_tr_problems")
@@ -1306,6 +1320,9 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.caption("Save your Telugu text and review details here to enable the build button.")
         for it in [i for i in edit["items"] if i["include"]]:
             st.text_input(it["text"][:80], (it.get("te") or {}).get("text", ""), key=f"{kp}_one_te_{it['id']}")
+            if "summary" in it:
+                st.text_area(f"Telugu summary points for {it['id']}", "\n".join((it.get("te") or {}).get("summary", [])),
+                             key=f"{kp}_one_te_summary_{it['id']}")
         st.checkbox("I checked the selected source links and reviewed the Telugu headlines", bool(edit.get("checked")), key=f"{kp}_one_te_checked")
         st.text_input("Approving editor for Telugu", edit.get("approver", ""), key=f"{kp}_one_te_approver")
         te_saved = st.form_submit_button("💾 Save Telugu")
@@ -1315,6 +1332,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.session_state[f"{kp}_one_sync_review"] = True
         for it in [i for i in edit["items"] if i["include"]]:
             it.setdefault("te", {})["text"] = st.session_state.get(f"{kp}_one_te_{it['id']}", "").strip()
+            if "summary" in it:
+                it["te"]["summary"] = uc.one_slider_summary_points(st.session_state.get(f"{kp}_one_te_summary_{it['id']}", ""))
         st.session_state.pop(f"{kp}_one_te", None)
         st.session_state.pop(f"{kp}_one_png_te", None)
         st.success("Telugu saved.")
