@@ -6947,6 +6947,55 @@ def one_slider_edition_window(day, edition: str = "daily"):
     raise ValueError("Choose Daily, AM or PM for the one-slider edition.")
 
 
+def _draft_one_story_summary(item: dict) -> tuple[list[str], str]:
+    """Extract short, complete points from a linked publisher article."""
+    links = sorted(item["links"], key=lambda link: bool(_GNEWS_RX.match(link["url"])))
+    best = [], ""
+    for link in links[:2]:
+        if not _source_url_ok(link["url"]):
+            continue
+        try:
+            excerpt, _ = fetch_article_text(link["url"], max_chars=3500)
+        except requests.RequestException:
+            continue
+        if not _fact_words(item["original"]).intersection(_fact_words(excerpt)):
+            continue
+        points = []
+        for sentence in split_sentences(excerpt):
+            if not (sentence.endswith((".", "!", ".”", '."')) and 6 <= len(sentence.split()) <= 26):
+                continue
+            if len(sentence) > 170 or _fact_overlap(sentence, item["original"]) >= .85:
+                continue
+            if any(_fact_overlap(sentence, point) >= .85 for point in points):
+                continue
+            points.append(sentence)
+            if len(points) == 3:
+                break
+        if len(points) > len(best[0]):
+            best = points, link["name"]
+        if len(points) >= 2:
+            break
+    return best
+
+
+def _draft_one_slider_summaries(items: list[dict]) -> None:
+    """Populate drafts within one shared deadline, including when a publisher is slow."""
+    from concurrent.futures import ThreadPoolExecutor, wait
+
+    with_pool = ThreadPoolExecutor(max_workers=ONE_SLIDER_CANDIDATE_LIMIT)
+    futures = {with_pool.submit(_draft_one_story_summary, item): item for item in items}
+    try:
+        done, _ = wait(futures, timeout=16)
+        for future in done:
+            item = futures[future]
+            try:
+                item["summary"], item["summary_source"] = future.result()
+            except Exception:
+                continue
+    finally:
+        with_pool.shutdown(wait=False, cancel_futures=True)
+
+
 def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MODEL, *, edition: str = "daily") -> dict:
     """Retrieved, source-linked news candidates; the editor selects the final slide."""
     from concurrent.futures import ThreadPoolExecutor
@@ -7043,6 +7092,10 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
                       "verification": (f"Listed by {len(s['outlets'])} outlet(s), {s['n_established']} established; "
                                        + ("single-source report — review before use" if len(s["outlets"]) == 1 else
                                           "multiple outlet listings — review before use"))})
+    _draft_one_slider_summaries(items)
+    if items:
+        ready = sum(len(item["summary"]) >= 2 for item in items)
+        status["Story summaries"] = f"{ready} of {len(items)} have at least two points from linked articles"
     status["Headlines"] = (f"{len(items)} of {len(ranked)} retrieved stories offered (maximum {ONE_SLIDER_CANDIDATE_LIMIT}); "
                            "none selected automatically (pending editorial checks)"
                            + (f"; left out: " + ", ".join(f"{n} {why}" for why, n in dropped.items()) if dropped else ""))
@@ -7060,7 +7113,6 @@ def _one_rewrite_problem(item, text, edit):
     """Conservative editorial checks; the editor still reviews against the linked source."""
     source=item.get("original") or item.get("text","")
     if not isinstance(text,str) or not text.strip():return "No usable headline returned."
-    if len(text.split())>12:return "Rewrite exceeds 12 words."
     if text.endswith('?'):return "Question-style headline needs rewriting."
     if _numbers(text)!=_numbers(source):return "A source figure was changed or omitted."
     units=r"\b(?:crores?|lakhs?|millions?|billions?|trillions?|thousands?|percent|percentage|kilometres?|kilometers?|km|rupees?|dollars?|rs)\b|[%₹$€]"
