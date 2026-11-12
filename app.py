@@ -65,11 +65,15 @@ def _load_secrets_into_env() -> None:
 
 _load_secrets_into_env()
 
+from usage_tracking import record_event, require_configured_login
+
+_individual_login = require_configured_login()
+
 # Optional password screen. Once the app is online, anyone with the link could
 # otherwise run searches on YOUR API keys. Set APP_PASSWORD (in Secrets or .env)
 # to require it; leave it unset for local use.
 _app_password = os.environ.get("APP_PASSWORD", "")
-if _app_password and not st.session_state.get("auth_ok"):
+if not _individual_login and _app_password and not st.session_state.get("auth_ok"):
     st.markdown("### 🔒 Campen Political Analysis Chatbot")
     entered = st.text_input("Password", type="password", key="app_password_input")
     if entered:
@@ -601,6 +605,7 @@ def _review_apply_telugu(edit: dict, kp: str) -> None:
 
 def render_editorial_review(c: dict, kp: str) -> None:
     """Editorial review of the draft, then the FINAL slides (PowerPoint, CamPen template) once approved."""
+    from usage_tracking import record_event
     ek, ik = f"{kp}_edit", f"{kp}_imgs"
     if ek not in st.session_state:
         st.session_state[ek] = uc.carousel_edit_state(c)
@@ -745,6 +750,7 @@ def render_editorial_review(c: dict, kp: str) -> None:
             final = uc.finalize_carousel(edit, images)
             st.session_state[f"{kp}_deck_en"] = (f"CamPen_DailyWrap_{edit['day']}_EN.pptx",
                                                  uc.build_carousel_pptx(final, images, "en"), final["approved_at"])
+            record_event("Carousel generated", day=edit["day"], language="en")
         except Exception as e:
             st.error(f"Couldn't build the slides: {e}")
     if f"{kp}_deck_en" in st.session_state:
@@ -822,6 +828,7 @@ def render_editorial_review(c: dict, kp: str) -> None:
                 final = uc.finalize_carousel(edit, images)
                 st.session_state[f"{kp}_deck_te"] = (f"CamPen_DailyWrap_{edit['day']}_TE.pptx",
                                                      uc.build_carousel_pptx(final, images, "te"), final["approved_at"])
+                record_event("Carousel generated", day=edit["day"], language="te")
             except Exception as e:
                 st.error(f"Couldn't build the Telugu slides: {e}")
         if f"{kp}_deck_te" in st.session_state:
@@ -1050,6 +1057,7 @@ def show_translation_problems(problems: list) -> None:
 
 def render_one_slider(msg: dict, kp: str) -> None:
     """One-slide headlines: review, edit, approve and download the single editable slide (English / Telugu)."""
+    from usage_tracking import record_event
     import copy as _copy
     ek = f"{kp}_one_edit"
     if ek not in st.session_state:
@@ -1287,13 +1295,29 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.download_button("⬇️ Selected sources page (.html)", uc.one_slider_sources_html(edit),
                            file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_sources.html", mime="text/html", key=f"{kp}_sources_dl")
 
+    queue_key = f"{kp}_linknest_pending"
+    queue_status = f"{kp}_linknest_status"
+
+    def _send_sources():
+        batch = st.session_state.get(queue_key)
+        if batch is None:
+            return
+        sent, message = uc.push_one_slider_sources(batch, os.environ.get("LINKNEST_INGEST_KEY", ""))
+        st.session_state[queue_status] = (sent, message)
+        if sent:
+            st.session_state.pop(queue_key, None)
+
+    def _queue_generated_sources():
+        st.session_state[queue_key] = uc.one_slider_source_batch(edit)
+        _send_sources()
+
     with st.expander("Universal source QR · LinkNest"):
         collection_url = uc.ONE_SLIDER_PUBLIC_SOURCES_URL
-        st.caption("Use this same QR on every category. The admin can update the links on LinkNest.")
-        st.link_button("Open sources page and admin editor", collection_url)
+        st.caption("Use this same QR on every category. Generated slides send their sources to the admin review queue.")
+        st.link_button("Open LinkNest sources and batch editor", collection_url)
         selected_sources = uc.one_slider_source_editor_text(edit)
         if selected_sources:
-            st.caption(f"Copy these links into the {edit['label']} list in the LinkNest admin editor.")
+            st.caption(f"Copy these story headings and links into the {edit['label']} category in the LinkNest admin editor.")
             st.code(selected_sources, language=None)
         try:
             qr = uc.make_qr_png(collection_url)
@@ -1335,6 +1359,9 @@ def render_one_slider(msg: dict, kp: str) -> None:
             st.session_state.pop(f"{kp}_one_png_en", None)
             st.session_state.pop(f"{kp}_one_editable_en", None)
             st.session_state[f"{kp}_one_en"] = uc.build_one_slider_pptx(edit, "en")
+            _queue_generated_sources()
+            record_event("One-slider generated", topic=edit["topic"], day=edit["day"],
+                         edition=edition, language="en", stories=sum(bool(i.get("include")) for i in edit["items"]))
             st.session_state[f"{kp}_one_png_en"] = uc.build_one_slider_png(edit, "en")
             st.session_state[f"{kp}_one_editable_en"] = uc.build_one_slider_editable_pptx(edit, "en")
         except Exception as e:
@@ -1403,6 +1430,9 @@ def render_one_slider(msg: dict, kp: str) -> None:
         try:
             st.session_state.pop(f"{kp}_one_editable_te", None)
             st.session_state[f"{kp}_one_te"] = uc.build_one_slider_pptx(edit, "te")
+            _queue_generated_sources()
+            record_event("One-slider generated", topic=edit["topic"], day=edit["day"],
+                         edition=edition, language="te", stories=sum(bool(i.get("include")) for i in edit["items"]))
             st.session_state[f"{kp}_one_editable_te"] = uc.build_one_slider_editable_pptx(edit, "te")
             st.session_state.pop(f"{kp}_one_png_te", None)
             try:
@@ -1423,6 +1453,12 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.image(st.session_state[f"{kp}_one_png_te"], width=420)
         st.download_button("⬇️ Download Telugu Instagram image (PNG)", st.session_state[f"{kp}_one_png_te"],
                            file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_TE.png", mime="image/png", key=f"{kp}_one_png_dl_te")
+    if queue_status in st.session_state:
+        sent, message = st.session_state[queue_status]
+        (st.success if sent else st.warning)(message)
+        if queue_key in st.session_state and os.environ.get("LINKNEST_INGEST_KEY"):
+            st.button("Retry sending sources to LinkNest", on_click=_send_sources, key=f"{kp}_linknest_retry")
+
     with st.expander("🔎 Sources checked"):
         for k, v in edit["status"].items():
             st.markdown(f"- **{k}:** {v}")
@@ -1944,6 +1980,7 @@ if prompt:
         if _one_date_error:
             st.error(_one_date_error)
         elif one:
+            record_event("One-slider requested", topic=one[0], day=one[1], edition=one[2] if len(one)>2 else "daily")
             run_one_slider_turn(one[0], one[1], key_prefix, *one[2:])
         elif reg and reg[0] == "ask-state":
             text = (f"Constituency number {reg[1]} exists in both Andhra Pradesh and Telangana -- which one? "
@@ -1951,10 +1988,12 @@ if prompt:
             st.info(text)
             st.session_state.messages.append({"role": "assistant", "content": text, "note": True})
         elif reg:
+            record_event("Regional report requested", period=reg[1])
             run_regional_turn(prompt, reg[0], reg[1], key_prefix)
         elif st.session_state.trigger_carousel or uc.detect_carousel_request(prompt):
             car = st.session_state.trigger_carousel or (car_day, CAROUSEL_STATE_CHOICES[car_states_label])
             st.session_state.trigger_carousel = None
+            record_event("Carousel requested", day=car[0], states=car[1])
             run_carousel_turn(prompt, car[0], car[1], key_prefix)
         elif wrap_choice:
             # Dates: an explicit range from a button/"Run fresh" first, then a period typed in words
@@ -1967,6 +2006,7 @@ if prompt:
             st.session_state.trigger_wrap_party = None
             if party is None:
                 party = uc.detect_wrap_party(prompt) or wrap_party
+            record_event("Daily wrap requested", start=rng[0], end=rng[1])
             run_wrap_turn(prompt, wrap_choice, rng[0], rng[1], key_prefix, party)
         elif date_error:
             text = f"Please fix the date range in the sidebar first: {date_error}"
@@ -1982,6 +2022,8 @@ if prompt:
             elif window == "Custom range" and custom_start and custom_end:
                 start_date = datetime.combine(custom_start, datetime.min.time())
                 end_date = datetime.combine(custom_end, datetime.min.time())
+
+            record_event("Search requested", mode=subject_mode, window=window)
 
             # Cache key uses the window *choice*, not computed timestamps, so a
             # repeat "Weekly" search a few minutes later still counts as the same.
