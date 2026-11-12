@@ -1058,9 +1058,6 @@ def render_one_slider(msg: dict, kp: str) -> None:
     edition = edit.get("edition", "daily")
     edition_suffix = f"_{edition.upper()}" if edition != "daily" else ""
     slide_label = edit["label"] + (f" · {edition.upper()}" if edition_suffix else "")
-    if st.session_state.pop(f"{kp}_one_reset_checked", False):
-        st.session_state[f"{kp}_one_checked"] = False
-        st.session_state[f"{kp}_one_te_checked"] = False
     if st.session_state.pop(f"{kp}_one_sync_review", False):
         st.session_state[f"{kp}_one_checked"] = bool(edit.get("checked"))
         st.session_state[f"{kp}_one_approver"] = edit.get("approver", "")
@@ -1121,6 +1118,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
 
     def _save_and_rewrite(source_copies_only=False):
         ss = st.session_state
+        previous_signature = uc.one_slider_signature(edit)
         edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
         for item in edit["items"]:
             item["include"] = bool(ss.get(f"{kp}_one_inc_{item['id']}", item["include"]))
@@ -1131,7 +1129,6 @@ def render_one_slider(msg: dict, kp: str) -> None:
             item["text"] = draft
             _save_summary(item, ss)
         edit["approver"] = ss.get(f"{kp}_one_approver", edit.get("approver", "")).strip()
-        edit["checked"] = False
         try:
             report = uc.rewrite_one_slider_headlines(edit, client, source_copies_only=source_copies_only)
             ss[f"{kp}_one_rewrite_report"] = report
@@ -1148,8 +1145,10 @@ def render_one_slider(msg: dict, kp: str) -> None:
             ss[f"{kp}_one_rewrite_error"] = str(exc)
         for key in (f"{kp}_one_en", f"{kp}_one_te", f"{kp}_one_png_en", f"{kp}_one_png_te"):
             ss.pop(key, None)
-        ss[f"{kp}_one_checked"] = False
-        ss[f"{kp}_one_te_checked"] = False
+        if previous_signature != uc.one_slider_signature(edit):
+            edit["checked"] = False
+            ss[f"{kp}_one_checked"] = False
+            ss[f"{kp}_one_te_checked"] = False
         ss[f"{kp}_one_te_approver"] = edit["approver"]
 
     with st.form(f"{kp}_one_form"):
@@ -1176,8 +1175,6 @@ def render_one_slider(msg: dict, kp: str) -> None:
                        + (f" · outlet headline: “{it['original']}”" if it["original"] != it["text"] else ""))
             if it.get("rewrite_status"):
                 c2.caption(it["rewrite_status"])
-        st.checkbox("I checked the headlines and summaries against the linked sources", edit["checked"], key=f"{kp}_one_checked")
-        st.text_input("Approving editor", edit["approver"], key=f"{kp}_one_approver")
         saved = st.form_submit_button("💾 Save", on_click=_rewrite_source_copies_on_save)
         st.form_submit_button("✍️ Save & rewrite for posting", key=f"{kp}_one_rewrite",
                               on_click=_save_and_rewrite, disabled=client is None)
@@ -1186,7 +1183,6 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if saved:
         ss = st.session_state
         previous_signature = uc.one_slider_signature(edit)
-        previous_checked = bool(edit.get("checked"))
         edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
         for it in edit["items"]:
             it["include"] = bool(ss.get(f"{kp}_one_inc_{it['id']}", it["include"]))
@@ -1197,11 +1193,9 @@ def render_one_slider(msg: dict, kp: str) -> None:
                 ss.pop(f"{kp}_one_te_summary_{it['id']}", None)
             it["text"] = new
             _save_summary(it, ss)
-        edit["checked"] = bool(ss.get(f"{kp}_one_checked", edit["checked"]))
-        edit["approver"] = ss.get(f"{kp}_one_approver", edit["approver"]).strip()
-        if previous_signature != uc.one_slider_signature(edit) and previous_checked:
+        if previous_signature != uc.one_slider_signature(edit) and edit.get("checked"):
             edit["checked"] = False
-            ss[f"{kp}_one_reset_checked"] = True
+            ss[f"{kp}_one_checked"] = False
         for k in (f"{kp}_one_en", f"{kp}_one_te", f"{kp}_one_png_en", f"{kp}_one_png_te"):
             ss.pop(k, None)
         ss[f"{kp}_one_te_checked"] = bool(edit.get("checked"))
@@ -1212,7 +1206,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if st.session_state.get(f"{kp}_one_rewrite_report"):
         report = st.session_state[f"{kp}_one_rewrite_report"]
         st.info(f"{report['rewritten']} of {report['selected']} selected headlines polished. Review the wording against the source before approval.")
-        if report["issues"]:
+        if report.get("issues"):
             with st.expander("Headlines that need manual editing"):
                 for item_id, issue in report["issues"].items():
                     st.write(f"{item_id}: {issue} Previous wording was retained.")
@@ -1289,6 +1283,15 @@ def render_one_slider(msg: dict, kp: str) -> None:
                             st.link_button("Open source article", article_url)
         st.download_button("⬇️ Selected sources page (.html)", uc.one_slider_sources_html(edit),
                            file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_sources.html", mime="text/html", key=f"{kp}_sources_dl")
+
+    st.markdown("**Source review**")
+    st.caption("Save any story edits above, then confirm the sources here.")
+    checked_key = f"{kp}_one_checked"
+    approver_key = f"{kp}_one_approver"
+    st.session_state.setdefault(checked_key, bool(edit.get("checked")))
+    st.session_state.setdefault(approver_key, edit.get("approver", ""))
+    edit["checked"] = st.checkbox("I checked the headlines and summaries against the linked sources", key=checked_key)
+    edit["approver"] = st.text_input("Approving editor", key=approver_key).strip()
 
     for notice in uc.one_slider_font_warnings(edit):
         st.info(notice)
