@@ -6878,7 +6878,10 @@ _ONE_INDIA_FEEDS = (
     ("NDTV — India", "https://feeds.feedburner.com/ndtvnews-india-news"),
 )
 _ONE_SLIDER_FEEDS = {
-    "national": _ONE_INDIA_FEEDS,
+    "national": _ONE_INDIA_FEEDS + (
+        ("The Hindu — National", "https://www.thehindu.com/news/national/feeder/default.rss"),
+        ("Hindustan Times — India", "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml"),
+    ),
     "ap": _ONE_INDIA_FEEDS + (
         ("The Hindu — Andhra Pradesh", "https://www.thehindu.com/news/national/andhra-pradesh/feeder/default.rss"),
     ),
@@ -6988,10 +6991,19 @@ def _one_headline_summary_points(headline: str, excerpt: str) -> list[str]:
 def _draft_one_story_summary(item: dict) -> tuple[list[str], str]:
     """Extract short, complete points from a linked publisher article."""
     links = sorted(item["links"], key=lambda link: bool(_GNEWS_RX.match(link["url"])))
-    best = [], ""
-    for link in links[:2]:
+    # Give another publisher a chance before checking multiple URLs from one outlet.
+    first_by_publisher = {}
+    alternate = []
+    for link in links:
         if not _source_url_ok(link["url"]):
             continue
+        publisher = _outlet_key(link["name"])
+        if publisher in first_by_publisher:
+            alternate.append(link)
+        else:
+            first_by_publisher[publisher] = link
+    best = [], ""
+    for link in [*first_by_publisher.values(), *alternate][:3]:
         try:
             excerpt, _ = fetch_article_text(link["url"], max_chars=3500)
         except requests.RequestException:
