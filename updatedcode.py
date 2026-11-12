@@ -7570,6 +7570,19 @@ def one_slider_summary_points(text: str) -> list[str]:
     return [point for line in text.splitlines() if (point := line.strip().lstrip("•- ").strip())]
 
 
+def one_slider_editorial_suggestions(edit: dict) -> list[str]:
+    """Offer copy improvements without making them a condition of export."""
+    suggestions = []
+    for item in edit["items"]:
+        if not item.get("include"):
+            continue
+        for problem in (_one_editorial_headline_problem(item, item["text"]),
+                        _one_editorial_summary_problem(item.get("summary", []))):
+            if problem:
+                suggestions.append(f"{item['id']}: {problem}")
+    return suggestions
+
+
 def one_slider_problems(edit: dict, lang: str = "en") -> list:
     """What still blocks building the one-slide PowerPoint."""
     errs = []
@@ -7580,24 +7593,6 @@ def one_slider_problems(edit: dict, lang: str = "en") -> list:
         errs.append(f"At most {ONE_SLIDER_MAX} headlines fit on the slide.")
     if any(not i["text"].strip() for i in inc):
         errs.append("A ticked headline is empty.")
-    if edit.get("editorial_rules"):
-        for item in inc:
-            if problem := _one_editorial_headline_problem(item, item["text"]):
-                errs.append(f"{item['id']}: {problem}")
-            if problem := _one_editorial_summary_problem(item.get("summary", [])):
-                errs.append(f"{item['id']}: {problem}")
-    for item in inc:
-        if not edit.get("editorial_rules") and item.get("needs_original_headline") and one_slider_has_original_wording(item, item["text"]):
-            errs.append(f"{item['id']}: rewrite the headline in your own words before building the slide.")
-    for item in inc:
-        if "summary" not in item:
-            continue  # Drafts saved before summaries were introduced can still be exported.
-        points = item["summary"] if lang == "en" else (item.get("te") or {}).get("summary", [])
-        required_counts = (2,) if edit.get("editorial_rules") else (2, 3)
-        if len(points) not in required_counts:
-            errs.append(f"{item['id']}: add {'two' if edit.get('editorial_rules') else 'two or three'} {'Telugu ' if lang == 'te' else ''}summary points.")
-        elif lang == "te" and (len(points) != len(item["summary"]) or not all(_is_telugu(point) for point in points)):
-            errs.append(f"{item['id']}: save each summary point in Telugu.")
     if inc and len(inc) <= ONE_SLIDER_MAX:
         try:
             _one_template_plan(edit, lang)
