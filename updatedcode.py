@@ -7558,6 +7558,21 @@ def recheck_one_slider_sources(edit: dict) -> dict:
 ONE_SLIDER_LINKNEST_URL = "https://linknest-qr-krish.fairmug4.chatgpt.site/"
 
 
+ONE_SLIDER_PUBLIC_SOURCES_URL = "https://linknest-qr-krish.krishivys.chatgpt.site/news-sources"
+
+
+def one_slider_source_editor_text(edit: dict) -> str:
+    """Copy selected source links into the LinkNest admin editor."""
+    links = {}
+    for item in edit["items"]:
+        if item.get("include"):
+            for link in item.get("links", []):
+                if _source_url_ok(link.get("url", "")):
+                    name = " ".join((link.get("name") or "Source").split()).replace("|", " ")
+                    links.setdefault(link["url"], name)
+    return "\n".join(f"{name} | {url}" for url, name in links.items())
+
+
 def one_slider_linknest_collection(edit: dict) -> tuple[str, int, int]:
     """Build a LinkNest share link with one source per story before adding extras."""
     from itertools import zip_longest
@@ -7585,8 +7600,6 @@ def one_slider_linknest_collection(edit: dict) -> tuple[str, int, int]:
             if not source or source["url"] in seen:
                 continue
             seen.add(source["url"])
-            if len(collection["links"]) >= 8:
-                continue
             collection["links"].append(source)
             if len(share_url()) > 2200:
                 collection["links"].pop()
