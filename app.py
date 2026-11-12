@@ -1090,6 +1090,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
         return
     selected = sum(bool(item.get("include")) for item in edit["items"])
     st.caption(f"{len(edit['items'])} retrieved news candidates · {selected} selected · choose up to {uc.ONE_SLIDER_MAX} for the slide.")
+    if edit.get("editorial_rules"):
+        st.caption("The app can select up to four ranked stories when Sarvam is connected. Review the selection and source links before approval.")
     st.caption("A maximum of 10 distinct news stories is offered for each one-slider request.")
     st.caption("Tick the stories you want on the slide. Save drafts fresh wording for selected publisher headlines when Sarvam is connected. "
                "Compare the rewrites with the source, review and approve, then translate to Telugu if needed.")
@@ -1151,7 +1153,10 @@ def render_one_slider(msg: dict, kp: str) -> None:
         ss[f"{kp}_one_te_approver"] = edit["approver"]
 
     with st.form(f"{kp}_one_form"):
-        st.caption("Review the suggested summary points against the source. Edit them in place and keep two or three points per selected story.")
+        if edit.get("editorial_rules"):
+            st.caption("Use up to 10 words for each headline and exactly two summary lines totalling 25 to 30 words. Explain what happened, then why it matters or what comes next.")
+        else:
+            st.caption("Review the suggested summary points against the source. Edit them in place and keep two or three points per selected story.")
         st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
         for it in edit["items"]:
             c1, c2 = st.columns([1, 11])
@@ -1290,6 +1295,16 @@ def render_one_slider(msg: dict, kp: str) -> None:
     errs = uc.one_slider_problems(edit)
     if errs:
         st.error("**Before building the slide:**\n" + "\n".join(f"- {e}" for e in errs))
+    if edit.get("editorial_rules"):
+        with st.expander("Editorial notes"):
+            st.write(uc.one_slider_editorial_notes(edit))
+        if not errs:
+            post_text = uc.one_slider_post_text(edit)
+            with st.expander("Copy-ready slide text, caption and notes"):
+                st.code(post_text, language=None)
+                st.download_button("Download slide text", post_text,
+                                   file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_copy.txt",
+                                   key=f"{kp}_one_post_copy")
     if st.button("✅ Approve & build the slide (English)", key=f"{kp}_one_build_en", disabled=bool(errs)):
         try:
             st.session_state.pop(f"{kp}_one_png_en", None)
