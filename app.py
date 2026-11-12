@@ -1091,7 +1091,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
     selected = sum(bool(item.get("include")) for item in edit["items"])
     st.caption(f"{len(edit['items'])} retrieved news candidates · {selected} selected · choose up to {uc.ONE_SLIDER_MAX} for the slide.")
     st.caption("A maximum of 10 distinct news stories is offered for each one-slider request.")
-    st.caption("Tick your news, then use Save & rewrite for posting to polish only the selected headlines. "
+    st.caption("Tick the stories you want on the slide. Save drafts fresh wording for selected publisher headlines when Sarvam is connected. "
                "Compare the rewrites with the source, review and approve, then translate to Telugu if needed.")
     if edit.get("fetched_at"):
         st.caption("News fetched: " + edit["fetched_at"])
@@ -1104,7 +1104,20 @@ def render_one_slider(msg: dict, kp: str) -> None:
             (item.get("te") or {}).pop("summary", None)
             state.pop(f"{kp}_one_te_summary_{item['id']}", None)
 
-    def _save_and_rewrite():
+    def _rewrite_source_copies_on_save():
+        if client is None:
+            return
+        state = st.session_state
+        selected_items = [item for item in edit["items"]
+                          if state.get(f"{kp}_one_inc_{item['id']}", item["include"])]
+        if 1 <= len(selected_items) <= uc.ONE_SLIDER_MAX and any(
+            item.get("needs_original_headline") and uc.one_slider_has_original_wording(
+                item, state.get(f"{kp}_one_txt_{item['id']}", item["text"])
+            ) for item in selected_items
+        ):
+            _save_and_rewrite(source_copies_only=True)
+
+    def _save_and_rewrite(source_copies_only=False):
         ss = st.session_state
         edit["title"] = ss.get(f"{kp}_one_title", edit["title"]).strip() or edit["title"]
         for item in edit["items"]:
@@ -1118,7 +1131,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
         edit["approver"] = ss.get(f"{kp}_one_approver", edit.get("approver", "")).strip()
         edit["checked"] = False
         try:
-            report = uc.rewrite_one_slider_headlines(edit, client)
+            report = uc.rewrite_one_slider_headlines(edit, client, source_copies_only=source_copies_only)
             ss[f"{kp}_one_rewrite_report"] = report
             ss.pop(f"{kp}_one_rewrite_error", None)
             for item in edit["items"]:
@@ -1160,7 +1173,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
                 c2.caption(it["rewrite_status"])
         st.checkbox("I checked the headlines and summaries against the linked sources", edit["checked"], key=f"{kp}_one_checked")
         st.text_input("Approving editor", edit["approver"], key=f"{kp}_one_approver")
-        saved = st.form_submit_button("💾 Save")
+        saved = st.form_submit_button("💾 Save", on_click=_rewrite_source_copies_on_save)
         st.form_submit_button("✍️ Save & rewrite for posting", key=f"{kp}_one_rewrite",
                               on_click=_save_and_rewrite, disabled=client is None)
         if client is None:
