@@ -7,6 +7,9 @@ reportlab>=4.0
 python-pptx>=0.6.21     # final carousel slides (PowerPoint)
 python-dotenv>=1.0
 pandas>=2.0
+uharfbuzz==0.57.0
+freetype-py==2.5.1
+
 
 # Optional but recommended for the daily carousel: turns Google News links into the publishers'
 # own article URLs, so article text can be read. Remove the "# " below to install it.
