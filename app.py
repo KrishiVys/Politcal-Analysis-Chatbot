@@ -1287,25 +1287,22 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.download_button("⬇️ Selected sources page (.html)", uc.one_slider_sources_html(edit),
                            file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_sources.html", mime="text/html", key=f"{kp}_sources_dl")
 
-    if any(item.get("include") for item in edit["items"]):
-        with st.expander("Source QR · LinkNest"):
-            collection_url, included, total = uc.one_slider_linknest_collection(edit)
-            if collection_url:
-                st.caption(f"{edit['label']} · {edit['day']}{edition_suffix.replace('_', ' · ')} · {included} source links")
-                if included < total:
-                    st.caption(f"LinkNest included {included} of {total} links. The sources HTML contains the full list.")
-                st.link_button("Open source collection in LinkNest", collection_url)
-                try:
-                    qr = uc.make_qr_png(collection_url)
-                except (ImportError, ValueError) as exc:
-                    st.warning(f"The QR image could not be generated: {exc}")
-                else:
-                    st.image(qr, width=240)
-                    st.download_button("Download source QR (.png)", qr, mime="image/png",
-                                       file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_source_qr.png",
-                                       key=f"{kp}_one_linknest_qr")
-            else:
-                st.info("No selected source links fit in a LinkNest collection.")
+    with st.expander("Universal source QR · LinkNest"):
+        collection_url = uc.ONE_SLIDER_PUBLIC_SOURCES_URL
+        st.caption("Use this same QR on every category. The admin can update the links on LinkNest.")
+        st.link_button("Open sources page and admin editor", collection_url)
+        selected_sources = uc.one_slider_source_editor_text(edit)
+        if selected_sources:
+            st.caption(f"Copy these links into the {edit['label']} list in the LinkNest admin editor.")
+            st.code(selected_sources, language=None)
+        try:
+            qr = uc.make_qr_png(collection_url)
+        except ImportError as exc:
+            st.warning(f"The QR image could not be generated: {exc}")
+        else:
+            st.image(qr, width=180)
+            st.download_button("Download universal source QR (.png)", qr, mime="image/png",
+                               file_name="CamPen_All_Categories_Source_QR.png", key=f"{kp}_one_linknest_qr")
 
     st.markdown("**Source review**")
     st.caption("Save any story edits above, then confirm the sources here.")
