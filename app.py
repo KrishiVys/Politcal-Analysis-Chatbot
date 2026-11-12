@@ -1138,7 +1138,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
         ss[f"{kp}_one_te_approver"] = edit["approver"]
 
     with st.form(f"{kp}_one_form"):
-        st.caption("Add two or three source-checked summary points per story, one per line. The slide fits the complete headline and points together.")
+        st.caption("Review the suggested summary points against the source. Edit them in place and keep two or three points per selected story.")
         st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
         for it in edit["items"]:
             c1, c2 = st.columns([1, 11])
@@ -1147,6 +1147,11 @@ def render_one_slider(msg: dict, kp: str) -> None:
                           label_visibility="collapsed")
             c2.text_area(f"Summary points for {it['id']}", "\n".join(it.get("summary", [])),
                          key=f"{kp}_one_summary_{it['id']}", placeholder="Enter one source-checked point per line")
+            if it.get("summary_source"):
+                c2.caption(f"Draft points from {it['summary_source']}.")
+            if len(it.get("summary", [])) < 2:
+                c2.caption("The app found fewer than two usable points. Check the linked article and add any missing points.")
+
             if it.get("published"):
                 c2.caption("Published: " + it["published"])
             c2.caption(f"{it['verification']} · " + " · ".join(f"[{l['name']}]({l['url']})" for l in it["links"][:4])
