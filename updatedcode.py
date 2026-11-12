@@ -7555,6 +7555,45 @@ def recheck_one_slider_sources(edit: dict) -> dict:
             "summary": dict(Counter(r["status"] for r in ordered))}
 
 
+ONE_SLIDER_LINKNEST_URL = "https://linknest-qr-krish.fairmug4.chatgpt.site/"
+
+
+def one_slider_linknest_collection(edit: dict) -> tuple[str, int, int]:
+    """Build a LinkNest share link with one source per story before adding extras."""
+    from itertools import zip_longest
+
+    edition = (edit.get("edition") or "daily").upper()
+    collection = {
+        "title": f"CamPen Media | {edit['label']}"[:70],
+        "description": f"Article sources · {edit['day']} · {edition}",
+        "links": [],
+    }
+
+    def share_url():
+        raw = json.dumps(collection, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+        return ONE_SLIDER_LINKNEST_URL + "#c=" + encoded
+
+    groups = [
+        [{"label": f"{index}. {link.get('name') or 'Source'}"[:50], "url": link["url"]}
+         for link in item.get("links", []) if _source_url_ok(link.get("url", ""))]
+        for index, item in enumerate((item for item in edit["items"] if item.get("include")), 1)
+    ]
+    seen = set()
+    for sources in zip_longest(*groups):
+        for source in sources:
+            if not source or source["url"] in seen:
+                continue
+            seen.add(source["url"])
+            if len(collection["links"]) >= 8:
+                continue
+            collection["links"].append(source)
+            if len(share_url()) > 2200:
+                collection["links"].pop()
+    included = len(collection["links"])
+    return (share_url() if included else ""), included, len(seen)
+
+
 def one_slider_sources_html(edit: dict) -> str:
     import html
     esc = html.escape
