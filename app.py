@@ -1154,7 +1154,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
 
     with st.form(f"{kp}_one_form"):
         if edit.get("editorial_rules"):
-            st.caption("Use up to 10 words for each headline and exactly two summary lines totalling 25 to 30 words. Explain what happened, then why it matters or what comes next.")
+            st.caption("Suggested format: up to 10 headline words and two short summary lines. You can use, edit or leave out the suggested points.")
         else:
             st.caption("Review the suggested summary points against the source. Edit them in place and keep two or three points per selected story.")
         st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
@@ -1168,7 +1168,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
             if it.get("summary_source"):
                 c2.caption(f"Draft points from {it['summary_source']}.")
             if len(it.get("summary", [])) < 2:
-                c2.caption("The app found fewer than two usable points. Check the linked article and add any missing points.")
+                c2.caption("The source provided limited detail. You can add points from the linked article if useful.")
 
             if it.get("published"):
                 c2.caption("Published: " + it["published"])
@@ -1296,7 +1296,9 @@ def render_one_slider(msg: dict, kp: str) -> None:
     if errs:
         st.error("**Before building the slide:**\n" + "\n".join(f"- {e}" for e in errs))
     if edit.get("editorial_rules"):
-        with st.expander("Editorial notes"):
+        with st.expander("Editorial suggestions and notes"):
+            for suggestion in uc.one_slider_editorial_suggestions(edit):
+                st.write(suggestion)
             st.write(uc.one_slider_editorial_notes(edit))
         if not errs:
             post_text = uc.one_slider_post_text(edit)
