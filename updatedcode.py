@@ -7437,10 +7437,14 @@ def one_slider_editorial_notes(edit: dict) -> str:
     return "NOTES: " + ("; ".join(notes) if notes else "No omissions or unresolved claims flagged in the draft.")
 
 
+ONE_SLIDER_EDITION_TAGLINES = {"am": "Rise & Read", "pm": "Wind Down Wrap"}
+
+
 def one_slider_post_text(edit: dict) -> str:
     """Copy-ready text in the same order as the English slide."""
     items = [item for item in edit["items"] if item.get("include")]
-    sections = [f"{edit['label']} · {edit['day']}", edit.get("title") or ONE_SLIDER_TITLE["en"]]
+    subtitle = ONE_SLIDER_EDITION_TAGLINES.get(edit.get("edition")) or edit.get("title") or ONE_SLIDER_TITLE["en"]
+    sections = [f"{edit['label']} · {edit['day']}", subtitle]
     sections.extend("\n".join([item["text"], *item.get("summary", [])]) for item in items)
     outlets = dict.fromkeys(link["name"] for item in items for link in item.get("links", []) if link.get("name"))
     if outlets:
@@ -7926,7 +7930,9 @@ def _one_template_plan(edit: dict,lang="en") -> list:
     fit("Date",datetime.strptime(edit["day"],"%Y-%m-%d").strftime("%d %b %Y").upper(),
         layout["date"],styles["date"],align="right" if edit["topic"]!="ap" else "left")
     subtitle=((edit.get("te") or {}).get("title") or ONE_SLIDER_TITLE["te"]) if lang=="te" else edit.get("title") or ONE_SLIDER_TITLE["en"]
-    fit("Subtitle",subtitle.rstrip("."),layout["subtitle"],styles["subtitle"],telugu=lang=="te")
+    # AM and PM taglines are already printed in the final artwork.
+    if edit.get("edition") not in ONE_SLIDER_EDITION_TAGLINES:
+        fit("Subtitle",subtitle.rstrip("."),layout["subtitle"],styles["subtitle"],telugu=lang=="te")
     items=[item for item in edit["items"] if item.get("include")]
     if len(items)>ONE_SLIDER_MAX:raise ValueError("Choose up to four headlines for one slide.")
     _, panel_top, _, row_span = _one_story_panel(edit["topic"], len(items))
