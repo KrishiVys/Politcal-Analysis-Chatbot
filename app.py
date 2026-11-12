@@ -1156,7 +1156,10 @@ def render_one_slider(msg: dict, kp: str) -> None:
             st.caption("Suggested format: up to 10 headline words and two short summary lines. You can use, edit or leave out the suggested points.")
         else:
             st.caption("Review the suggested summary points against the source. Edit them in place and keep two or three points per selected story.")
-        st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
+        if edition in uc.ONE_SLIDER_EDITION_TAGLINES:
+            st.caption(f"Template tagline · {uc.ONE_SLIDER_EDITION_TAGLINES[edition]}")
+        else:
+            st.text_input("Slide title", edit["title"], key=f"{kp}_one_title")
         for it in edit["items"]:
             c1, c2 = st.columns([1, 11])
             c1.checkbox("Use", it["include"], key=f"{kp}_one_inc_{it['id']}")
