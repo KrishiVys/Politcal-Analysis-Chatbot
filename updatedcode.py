@@ -7561,16 +7561,48 @@ ONE_SLIDER_LINKNEST_URL = "https://linknest-qr-krish.fairmug4.chatgpt.site/"
 ONE_SLIDER_PUBLIC_SOURCES_URL = "https://linknest-qr-krish.krishivys.chatgpt.site/news-sources"
 
 
+def one_slider_source_batch(edit: dict) -> dict:
+    """The stories and sources in the saved slide, grouped for LinkNest."""
+    stories = []
+    for item in edit["items"]:
+        if not item.get("include"):
+            continue
+        links = {}
+        for link in item.get("links", []):
+            url = link.get("url", "")
+            if len(url) <= 2000 and _source_url_ok(url):
+                name = " ".join((link.get("name") or "Source").split()).replace("|", " ")
+                links.setdefault(url, name[:150])
+        if links:
+            stories.append({"headline": " ".join(item["text"].split())[:250],
+                            "links": [{"label": name, "url": url} for url, name in links.items()]})
+    return {"category": edit["topic"], "day": edit["day"], "edition": edit.get("edition") or "daily",
+            "stories": stories}
+
+
 def one_slider_source_editor_text(edit: dict) -> str:
     """Copy selected source links into the LinkNest admin editor."""
-    links = {}
-    for item in edit["items"]:
-        if item.get("include"):
-            for link in item.get("links", []):
-                if _source_url_ok(link.get("url", "")):
-                    name = " ".join((link.get("name") or "Source").split()).replace("|", " ")
-                    links.setdefault(link["url"], name)
-    return "\n".join(f"{name} | {url}" for url, name in links.items())
+    return "\n\n".join("\n".join([f"# {story['headline']}",
+                              *(f"{link['label']} | {link['url']}" for link in story["links"])])
+                      for story in one_slider_source_batch(edit)["stories"])
+
+
+def push_one_slider_sources(batch: dict, key: str) -> tuple[bool, str]:
+    """Send a generated slide to the private LinkNest review queue."""
+    if not key:
+        return False, "Add LINKNEST_INGEST_KEY to Streamlit Secrets to send slide sources automatically."
+    if not batch["stories"]:
+        return False, "This slide has no linked sources to queue."
+    endpoint = ONE_SLIDER_PUBLIC_SOURCES_URL.rsplit("/", 1)[0] + "/api/source-batches/stage"
+    try:
+        response = requests.post(endpoint, json=batch, headers={"X-Ingest-Key": key}, timeout=8, allow_redirects=False)
+    except requests.RequestException:
+        return False, "LinkNest could not be reached. You can retry sending these sources."
+    if response.ok and response.status_code == 200:
+        return True, "Sources added to the private LinkNest review queue."
+    if response.status_code == 403:
+        return False, "LinkNest rejected the connection key. Check Streamlit Secrets and retry."
+    return False, f"LinkNest did not accept the sources (HTTP {response.status_code}). You can retry."
 
 
 def one_slider_linknest_collection(edit: dict) -> tuple[str, int, int]:
