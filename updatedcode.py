@@ -7670,6 +7670,31 @@ def one_slider_summary_points(text: str) -> list[str]:
     return [point for line in text.splitlines() if (point := line.strip().lstrip("•- ").strip())]
 
 
+def one_slider_summary_match_warnings(edit: dict, lang: str = "en") -> list[str]:
+    """Flag likely story mix-ups using saved headlines and summary text."""
+    stories = []
+    for item in edit["items"]:
+        if item.get("include"):
+            copy = item if lang == "en" else item.get("te") or {}
+            headline = copy.get("text", "")
+            words = _fact_words(headline) if lang == "en" else set(headline.casefold().split())
+            stories.append((item["id"], words, copy.get("summary", [])))
+    warnings = []
+    for story_id, own, points in stories:
+        if not own or not points:
+            continue
+        summary = " ".join(points)
+        words = _fact_words(summary) if lang == "en" else set(summary.casefold().split())
+        own_hits = len(own & words)
+        other = max(((len((headline - own) & words), other_id)
+                     for other_id, headline, _ in stories if other_id != story_id), default=(0, ""))
+        if other[0] >= max(2, own_hits + 2):
+            warnings.append(f"{story_id}: The summary shares more keywords with {other[1]}. Check that it belongs to this story.")
+        elif lang == "en" and not own_hits:
+            warnings.append(f"{story_id}: The summary and headline share no key terms. Check that they describe the same story.")
+    return warnings
+
+
 def one_slider_editorial_suggestions(edit: dict) -> list[str]:
     """Offer copy improvements without making them a condition of export."""
     suggestions = []
