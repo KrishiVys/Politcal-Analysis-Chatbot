@@ -1275,7 +1275,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
                                file_name=f"CamPen_{edit['topic']}_{edit['day']}{edition_suffix}_caption_TE.txt", key=f"{kp}_caption_dl_te")
 
     with st.expander("🔎 Recheck selected source links", expanded=False):
-        st.caption("Checks publisher links and headline overlap. Blocked or mismatched pages need manual review; this does not verify facts.")
+        st.caption("Checks each saved headline against its linked article and the publisher’s original publication time for this edition. Review missing dates and blocked articles manually.")
         if st.button("Recheck sources now", key=f"{kp}_sources_recheck"):
             with st.spinner("Rechecking selected article links…"):
                 edit["source_audit"] = uc.recheck_one_slider_sources(edit)
@@ -1287,7 +1287,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
                 st.caption("Checked " + audit["checked_at"])
                 for index, result in enumerate(audit["results"]):
                     with st.container(border=True):
-                        st.text(f"{result['name']} · {result['status']}")
+                        st.text(f"{result.get('story_id', 'Source')} · {result['name']} · {result['status'].replace('_', ' ')}")
                         st.caption(result["detail"])
                         article_url = result.get("resolved_url") or result["url"]
                         if uc._source_url_ok(article_url):
