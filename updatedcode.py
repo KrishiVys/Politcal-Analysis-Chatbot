@@ -7389,7 +7389,7 @@ ONE_SLIDER_HASHTAGS = {
 
 def one_slider_signature(edit: dict) -> str:
     """Bind captions and rechecks to exactly the selected, saved headlines and links."""
-    data = [edit.get("topic"), edit.get("day"), edit.get("title"),
+    data = [edit.get("topic"), edit.get("day"), edit.get("edition") or "daily", edit.get("title"),
             [(i["id"], i["text"], i.get("summary", []), i.get("links", [])) for i in edit["items"] if i.get("include")]]
     return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
@@ -7478,7 +7478,31 @@ def _source_url_ok(url: str) -> bool:
         return False
 
 
-def _recheck_one_source(link: dict, headlines: list) -> dict:
+def _one_source_publication(soup):
+    """Read the publisher's original timestamp, never its modification time."""
+    candidates = [node.get("content") for node in soup.select(
+        'meta[property="article:published_time"], meta[itemprop="datePublished"], meta[name="datePublished"]'
+    )]
+    for node in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(node.string or "")
+        except ValueError:
+            continue
+        entries = data if isinstance(data, list) else data.get("@graph", [data]) if isinstance(data, dict) else []
+        candidates.extend(entry.get("datePublished") for entry in entries if isinstance(entry, dict))
+    for value in candidates:
+        if not isinstance(value, str):
+            continue
+        try:
+            published = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if published.utcoffset() is not None:
+            return published.astimezone(timezone.utc).replace(tzinfo=None)
+    return None
+
+
+def _recheck_one_source(link: dict, headlines: list, window=None) -> dict:
     url = str(link.get("url") or "").strip()
     result = {"name": link.get("name", ""), "url": url, "resolved_url": "", "status": "unchecked",
               "detail": "", "checked_at": f"{utc_now() + IST_OFFSET:%Y-%m-%d %H:%M} IST"}
@@ -7509,6 +7533,13 @@ def _recheck_one_source(link: dict, headlines: list) -> dict:
             return dict(result, status="manual", detail="Link responds, but article matching needs beautifulsoup4.")
         page = _read_capped(response)
         soup = BeautifulSoup(page, "html.parser")
+        if window:
+            published = _one_source_publication(soup)
+            if published is None:
+                result["timeline"] = "unverified"
+            else:
+                result["published"] = f"{_ist(published):%d %b %Y, %H:%M} IST"
+                result["timeline"] = "in_window" if window[0] <= published < window[1] else "outside_window"
         title = soup.find("h1") or soup.find("title")
         title = title.get_text(" ", strip=True) if title else ""
         text = title + " " + _article_text_from_html(page, 6000)
@@ -7517,7 +7548,16 @@ def _recheck_one_source(link: dict, headlines: list) -> dict:
             expected = _story_words(headline, set())
             shared = expected & words
             if expected and len(shared) >= min(3, len(expected)) and len(shared) / len(expected) >= .4:
-                return dict(result, status="matched", detail="Article text overlaps the headline. This is not fact verification.")
+                if result.get("timeline") == "outside_window":
+                    return dict(result, status="outside_window",
+                                detail=f"Headline matches, but the article was published {result['published']}, outside this edition.")
+                if result.get("timeline") == "unverified":
+                    return dict(result, status="date_unverified",
+                                detail="Headline matches. The publisher provides no publication time with a timezone.")
+                detail = "Article text overlaps the headline."
+                if result.get("published"):
+                    detail += f" Published {result['published']}, within this edition."
+                return dict(result, status="matched", detail=detail)
         return dict(result, status="mismatch", detail="Page responds, but its text did not match the headline; check manually.")
     except Exception as exc:
         return dict(result, status="unreachable", detail=_short_error(exc))
@@ -7527,25 +7567,26 @@ def _recheck_one_source(link: dict, headlines: list) -> dict:
 
 
 def recheck_one_slider_sources(edit: dict) -> dict:
-    """Check unique links once, using only the currently selected headlines."""
+    """Check each selected headline against its links and its edition window."""
     from concurrent.futures import ThreadPoolExecutor, wait
     links = {}
+    window = one_slider_edition_window(datetime.fromisoformat(edit["day"]).date(), edit.get("edition") or "daily")
     for item in edit["items"]:
         if not item.get("include"):
             continue
         for link in item.get("links", []):
-            url = link.get("url", "")
-            entry = links.setdefault(url, {"link": dict(link), "headlines": []})
-            entry["headlines"].append(item.get("original") or item["text"])
+            key = (item["id"], link.get("url", ""))
+            links[key] = dict(link, story_id=item["id"]), item["text"]
     executor = ThreadPoolExecutor(max_workers=6)
-    futures = {executor.submit(_recheck_one_source, x["link"], x["headlines"]): url for url,x in links.items()}
+    futures = {executor.submit(_recheck_one_source, link, [headline], window): key
+               for key, (link, headline) in links.items()}
     try:
         done, pending = wait(futures, timeout=25)
-        results = {futures[f]: f.result() for f in done}
+        results = {futures[f]: dict(f.result(), story_id=futures[f][0]) for f in done}
         for f in pending:
             f.cancel()
             url = futures[f]
-            results[url] = dict(links[url]["link"], status="timeout", resolved_url="",
+            results[url] = dict(links[url][0], status="timeout", resolved_url="",
                                 detail="Recheck deadline reached; check manually.", checked_at="")
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
@@ -7563,6 +7604,9 @@ ONE_SLIDER_PUBLIC_SOURCES_URL = "https://linknest-qr-krish.krishivys.chatgpt.sit
 
 def one_slider_source_batch(edit: dict) -> dict:
     """The stories and sources in the saved slide, grouped for LinkNest."""
+    audit = edit.get("source_audit") or {}
+    rejected = {(result.get("story_id"), result["url"]) for result in audit.get("results", [])
+                if result["status"] in {"outside_window", "mismatch"}} if audit.get("signature") == one_slider_signature(edit) else set()
     stories = []
     for item in edit["items"]:
         if not item.get("include"):
@@ -7570,7 +7614,7 @@ def one_slider_source_batch(edit: dict) -> dict:
         links = {}
         for link in item.get("links", []):
             url = link.get("url", "")
-            if len(url) <= 2000 and _source_url_ok(url):
+            if (item["id"], url) not in rejected and len(url) <= 2000 and _source_url_ok(url):
                 name = " ".join((link.get("name") or "Source").split()).replace("|", " ")
                 links.setdefault(url, name[:150])
         if links:
@@ -7644,7 +7688,7 @@ def one_slider_sources_html(edit: dict) -> str:
     esc = html.escape
     audit = edit.get("source_audit") or {}
     current = audit.get("signature") == one_slider_signature(edit)
-    checked = {r["url"]: r for r in audit.get("results", [])} if current else {}
+    checked = {(r.get("story_id"), r["url"]): r for r in audit.get("results", [])} if current else {}
     rows = []
     for item in edit["items"]:
         if not item.get("include"):
@@ -7654,7 +7698,7 @@ def one_slider_sources_html(edit: dict) -> str:
             url = link.get("url", "")
             label = esc(link.get("name", "Source"))
             anchor = f'<a href="{esc(url, quote=True)}" rel="noopener noreferrer">{label}</a>' if _source_url_ok(url) else label
-            check = checked.get(url, {})
+            check = checked.get((item["id"], url), checked.get((None, url), {}))
             links.append(f'<li>{anchor} — {esc(check.get("status", "not rechecked"))}: {esc(check.get("detail", ""))}</li>')
         rows.append(f'<section><h2>{esc(item["text"])}</h2><ul>{"".join(links)}</ul></section>')
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
