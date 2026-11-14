@@ -4273,7 +4273,7 @@ def _article_text_from_html(html: str, max_chars: int) -> str:
     return text[:max_chars]
 
 
-def fetch_article_text(url: str, max_chars: int = 1500) -> tuple:
+def fetch_article_text(url: str, max_chars: int = 1500, *, publication: dict | None = None) -> tuple:
     """(text, problem): the opening of a news article, or ("", why it failed).
     Google News redirect links are first resolved to the publisher's page."""
     if BeautifulSoup is None:
@@ -4292,7 +4292,10 @@ def fetch_article_text(url: str, max_chars: int = 1500) -> tuple:
     if r.status_code >= 400:
         return "", f"the page returned HTTP {r.status_code}"
     try:
-        text = _article_text_from_html(_read_capped(r), max_chars)
+        page = _read_capped(r)
+        if publication is not None:
+            publication["time"] = _one_source_publication(BeautifulSoup(page, "html.parser"))
+        text = _article_text_from_html(page, max_chars)
     except Exception:
         text = ""
     return (text, "") if text else ("", "the page had no readable article text (it may be paywalled or load by script)")
@@ -6988,7 +6991,7 @@ def _one_headline_summary_points(headline: str, excerpt: str) -> list[str]:
     return points
 
 
-def _draft_one_story_summary(item: dict) -> tuple[list[str], str]:
+def _draft_one_story_summary(item: dict, window=None):
     """Extract short, complete points from a linked publisher article."""
     links = sorted(item["links"], key=lambda link: bool(_GNEWS_RX.match(link["url"])))
     # Give another publisher a chance before checking multiple URLs from one outlet.
@@ -7003,31 +7006,60 @@ def _draft_one_story_summary(item: dict) -> tuple[list[str], str]:
         else:
             first_by_publisher[publisher] = link
     best = [], ""
-    for link in [*first_by_publisher.values(), *alternate][:3]:
+    stale = set()
+    confirmed = {}
+    candidates = [*first_by_publisher.values(), *alternate]
+    for link in (candidates if window else candidates[:3]):
         try:
-            excerpt, _ = fetch_article_text(link["url"], max_chars=3500)
+            publication = {}
+            if window:
+                excerpt, _ = fetch_article_text(link["url"], max_chars=3500, publication=publication)
+                published = publication.get("time")
+                if published is not None:
+                    if not window[0] <= published < window[1]:
+                        stale.add(link["url"])
+                        continue
+                    confirmed[link["url"]] = published
+            else:
+                excerpt, _ = fetch_article_text(link["url"], max_chars=3500)
         except requests.RequestException:
             continue
         points = _one_headline_summary_points(item["original"], excerpt)
         if len(points) > len(best[0]):
             best = points, link["name"]
-        if len(points) >= 2:
+        if not window and len(points) >= 2:
             break
-    return best
+    return (*best, stale, confirmed) if window else best
 
 
-def _draft_one_slider_summaries(items: list[dict]) -> None:
+def _draft_one_slider_summaries(items: list[dict], window=None) -> None:
     """Populate drafts within one shared deadline, including when a publisher is slow."""
     from concurrent.futures import ThreadPoolExecutor, wait
 
     with_pool = ThreadPoolExecutor(max_workers=ONE_SLIDER_CANDIDATE_LIMIT)
-    futures = {with_pool.submit(_draft_one_story_summary, item): item for item in items}
+    futures = {with_pool.submit(_draft_one_story_summary, item, window): item for item in items}
     try:
         done, _ = wait(futures, timeout=16)
         for future in done:
             item = futures[future]
             try:
-                item["summary"], item["summary_source"] = future.result()
+                result = future.result()
+                item["summary"], item["summary_source"] = result[:2]
+                if window:
+                    stale, confirmed = result[2:]
+                    item["links"] = [link for link in item["links"] if link["url"] not in stale]
+                    item["outlets"] = list(dict.fromkeys(link["name"] for link in item["links"]))
+                    item["n_established"] = sum(
+                        outlet_kind(link["name"], link["url"]) in ("established", "primary")
+                        for link in item["links"]
+                    )
+                    if confirmed:
+                        item["published"] = f"{_ist(min(confirmed.values())):%d %b %Y, %H:%M} IST"
+                        item["verification"] = "Publisher confirms publication in the selected window."
+                    elif stale:
+                        item["links"] = []
+                    else:
+                        item["verification"] = "Feed date matches the window. Review the original publisher date."
             except Exception:
                 continue
     finally:
@@ -7086,6 +7118,20 @@ def _polish_one_slider_summaries(items: list[dict], client, model: str, *, edito
             item["summary"] = checked
 
 
+def _one_stale_naidu_birthday(headline: str, start: datetime, end: datetime) -> bool:
+    """Reject routine birthday greetings surfaced outside the April 20 edition."""
+    if not re.search(r"\b(?:chandrababu(?:\s+naidu)?|naidu)\b", headline, re.I):
+        return False
+    if not re.search(r"\bbirthday\b", headline, re.I):
+        return False
+    if not re.search(r"\b(?:wish\w*|greet\w*|celebrat\w*|happy|mark\w*|turns?)\b", headline, re.I):
+        return False
+    if re.search(r"\b(?:ahead of|belated|upcoming|advance|cancel\w*|postpon\w*)\b", headline, re.I):
+        return False
+    dates = ((start + IST_OFFSET).date(), (end - timedelta(microseconds=1) + IST_OFFSET).date())
+    return not any((day.month, day.day) == (4, 20) for day in dates)
+
+
 def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MODEL, *, edition: str = "daily") -> dict:
     """Retrieved, source-linked news candidates; the editor selects the final slide."""
     from concurrent.futures import ThreadPoolExecutor
@@ -7134,6 +7180,9 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
     keep = []
     for a in arts:
         h = a.get("headline", "")
+        if topic == "ap" and _one_stale_naidu_birthday(h, start, end):
+            dropped["birthday coverage outside the event date"] += 1
+            continue
         if topic != "hyderabad" and cfg["state"] and (is_off_state(h, cfg["state"]) or not (
             a.get("publisher_section") == cfg["state"] or _rx(_WRAP_OWN_PLACES[cfg["state"]]).search(h)
         )):
@@ -7189,7 +7238,12 @@ def gather_one_slider(topic: str, day=None, client=None, model: str = DEFAULT_MO
                       "verification": (f"Listed by {len(s['outlets'])} outlet(s), {s['n_established']} established; "
                                        + ("single-source report — review before use" if len(s["outlets"]) == 1 else
                                           "multiple outlet listings — review before use"))})
-    _draft_one_slider_summaries(items)
+    _draft_one_slider_summaries(items, (start, end))
+    before_date_check = len(items)
+    items = [item for item in items if item["links"]]
+    rejected = before_date_check - len(items)
+    if rejected:
+        dropped["outside the publisher publication window"] += rejected
     _polish_one_slider_summaries(items, client, model, editorial=True)
     for item in items:
         item["summary"] = item["summary"][:2]
