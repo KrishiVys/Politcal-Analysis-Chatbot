@@ -1339,6 +1339,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
 
     for notice in uc.one_slider_font_warnings(edit):
         st.info(notice)
+    for notice in uc.one_slider_summary_match_warnings(edit, "en"):
+        st.warning(notice)
     errs = uc.one_slider_problems(edit)
     if errs:
         st.error("**Before building the slide:**\n" + "\n".join(f"- {e}" for e in errs))
@@ -1423,6 +1425,8 @@ def render_one_slider(msg: dict, kp: str) -> None:
         st.session_state.pop(f"{kp}_one_te", None)
         st.session_state.pop(f"{kp}_one_png_te", None)
         st.success("Telugu saved.")
+    for notice in uc.one_slider_summary_match_warnings(edit, "te"):
+        st.warning(notice)
     te_errs = uc.one_slider_problems(edit, "te")
     if te_errs:
         st.warning("To enable the Telugu build button:\n" + "\n".join(f"- {problem}" for problem in te_errs))
