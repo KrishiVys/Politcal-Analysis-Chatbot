@@ -6790,7 +6790,7 @@ ONE_SLIDER_TOPICS["brief"] = {
     "label": "In Brief", "chip": "IN BRIEF", "te_chip": "సంక్షిప్తంగా", "political": False, "state": None,
     "queries": ["India news", "Telangana news", "Andhra Pradesh news", "India world affairs", "India business technology", "India sports entertainment"],
 }
-ONE_SLIDER_MAX = 4
+ONE_SLIDER_MAX = 6
 ONE_SLIDER_CANDIDATE_LIMIT = 10
 ONE_SLIDER_TITLE = {"en": "Today\u2019s headlines.", "te": "నేటి ముఖ్యాంశాలు."}
 
@@ -7313,7 +7313,7 @@ def rewrite_one_slider_headlines(edit: dict,client,model: str = DEFAULT_MODEL, *
     """Polish the editor's selected stories, without selecting news or resizing fonts."""
     selected=[item for item in edit["items"] if item.get("include")]
     if not selected:raise ValueError("Select at least one headline to rewrite.")
-    if len(selected)>ONE_SLIDER_MAX:raise ValueError("Choose up to four headlines before rewriting.")
+    if len(selected)>ONE_SLIDER_MAX:raise ValueError(f"Choose up to {ONE_SLIDER_MAX} headlines before rewriting.")
     if source_copies_only:
         selected = [item for item in selected if item.get("needs_original_headline")
                     and one_slider_has_original_wording(item, item["text"])]
@@ -8018,7 +8018,7 @@ def _one_template_plan(edit: dict,lang="en") -> list:
     if edit.get("edition") not in ONE_SLIDER_EDITION_TAGLINES:
         fit("Subtitle",subtitle.rstrip("."),layout["subtitle"],styles["subtitle"],telugu=lang=="te")
     items=[item for item in edit["items"] if item.get("include")]
-    if len(items)>ONE_SLIDER_MAX:raise ValueError("Choose up to four headlines for one slide.")
+    if len(items)>ONE_SLIDER_MAX:raise ValueError(f"Choose up to {ONE_SLIDER_MAX} headlines for one slide.")
     _, panel_top, _, row_span = _one_story_panel(edit["topic"], len(items))
     preferred_scale = {1: 2.5, 2: 1.8, 3: 1.4, 4: 1.12}.get(len(items), 1)
     for n,item in enumerate(items):
