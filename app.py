@@ -1096,7 +1096,7 @@ def render_one_slider(msg: dict, kp: str) -> None:
     selected = sum(bool(item.get("include")) for item in edit["items"])
     st.caption(f"{len(edit['items'])} retrieved news candidates · {selected} selected · choose up to {uc.ONE_SLIDER_MAX} for the slide.")
     if edit.get("editorial_rules"):
-        st.caption("The app can select up to four ranked stories when Sarvam is connected. Review the selection and source links before approval.")
+        st.caption(f"The app can select up to {uc.ONE_SLIDER_MAX} ranked stories when Sarvam is connected. Review the selection and source links before approval.")
     st.caption("A maximum of 10 distinct news stories is offered for each one-slider request.")
     st.caption("Tick the stories you want on the slide. Save drafts fresh wording for selected publisher headlines when Sarvam is connected. "
                "Compare the rewrites with the source, review and approve, then translate to Telugu if needed.")
